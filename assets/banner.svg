@@ -1,0 +1,266 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradients -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090d16" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+
+    <!-- Accent Gradients -->
+    <linearGradient id="primary-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+
+    <linearGradient id="glow-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#a855f7" stop-opacity="0.2" />
+    </linearGradient>
+
+    <linearGradient id="cyber-grid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.03" />
+      <stop offset="100%" stop-color="#818cf8" stop-opacity="0.08" />
+    </linearGradient>
+
+    <!-- Glowing Filters -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="soft-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Dynamic CSS Animations -->
+    <style>
+      @keyframes pulseGlow {
+        0%, 100% { opacity: 0.4; transform: scale(1); }
+        50% { opacity: 0.85; transform: scale(1.05); }
+      }
+      @keyframes dashFlow {
+        0% { stroke-dashoffset: 200; }
+        100% { stroke-dashoffset: 0; }
+      }
+      @keyframes radarSweep {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      @keyframes floatParticle {
+        0%, 100% { transform: translateY(0px) translateX(0px); }
+        50% { transform: translateY(-12px) translateX(6px); }
+      }
+      @keyframes titleShimmer {
+        0% { stop-color: #38bdf8; }
+        50% { stop-color: #f472b6; }
+        100% { stop-color: #38bdf8; }
+      }
+      @keyframes beaconRing {
+        0% { r: 6; opacity: 1; stroke-width: 2; }
+        100% { r: 28; opacity: 0; stroke-width: 0.5; }
+      }
+
+      .pulse-core {
+        animation: pulseGlow 4s ease-in-out infinite;
+        transform-origin: 960px 210px;
+      }
+      .flow-path {
+        stroke-dasharray: 8, 8;
+        animation: dashFlow 20s linear infinite;
+      }
+      .flow-fast {
+        stroke-dasharray: 6, 6;
+        animation: dashFlow 8s linear infinite;
+      }
+      .particle-1 { animation: floatParticle 5s ease-in-out infinite; }
+      .particle-2 { animation: floatParticle 7s ease-in-out infinite 1s; }
+      .particle-3 { animation: floatParticle 6s ease-in-out infinite 2s; }
+      
+      .ring-anim-1 { animation: beaconRing 3s cubic-bezier(0, 0.2, 0.8, 1) infinite; }
+      .ring-anim-2 { animation: beaconRing 3s cubic-bezier(0, 0.2, 0.8, 1) infinite 1.5s; }
+
+      .text-title {
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-weight: 900;
+        letter-spacing: -1.5px;
+      }
+      .text-subtitle {
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+      }
+      .text-badge {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-weight: 700;
+        font-size: 11px;
+        letter-spacing: 1px;
+      }
+    </style>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="1200" height="420" fill="url(#bg-grad)" rx="16" />
+  <rect width="1196" height="416" x="2" y="2" fill="none" stroke="url(#primary-grad)" stroke-width="1.5" stroke-opacity="0.3" rx="15" />
+
+  <!-- Geometric Grid Pattern Overlay -->
+  <g opacity="0.35">
+    <path d="M0,70 L1200,70 M0,140 L1200,140 M0,210 L1200,210 M0,280 L1200,280 M0,350 L1200,350" stroke="#1e293b" stroke-width="1" stroke-dasharray="4,4" />
+    <path d="M150,0 L150,420 M300,0 L300,420 M450,0 L450,420 M600,0 L600,420 M750,0 L750,420 M900,0 L900,420 M1050,0 L1050,420" stroke="#1e293b" stroke-width="1" stroke-dasharray="4,4" />
+  </g>
+
+  <!-- Ambient Light Orbs -->
+  <circle cx="200" cy="120" r="180" fill="#38bdf8" opacity="0.07" filter="url(#glow)" />
+  <circle cx="960" cy="210" r="220" fill="#818cf8" opacity="0.12" filter="url(#glow)" class="pulse-core" />
+  <circle cx="1050" cy="320" r="120" fill="#c084fc" opacity="0.08" filter="url(#glow)" />
+
+  <!-- SWARM GRAPH VISUALIZATION (Right Section) -->
+  <g transform="translate(40, 0)">
+    <!-- Constellation / Mesh Connections (Dynamic Flow Lines) -->
+    <!-- Core Links to Queen -->
+    <line x1="920" y1="210" x2="800" y2="120" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.6" class="flow-fast" />
+    <line x1="920" y1="210" x2="820" y2="300" stroke="#818cf8" stroke-width="1.5" stroke-opacity="0.6" class="flow-path" />
+    <line x1="920" y1="210" x2="1040" y2="130" stroke="#c084fc" stroke-width="1.5" stroke-opacity="0.6" class="flow-path" />
+    <line x1="920" y1="210" x2="1050" y2="290" stroke="#34d399" stroke-width="1.5" stroke-opacity="0.6" class="flow-fast" />
+    <line x1="920" y1="210" x2="920" y2="80" stroke="#f472b6" stroke-width="1.5" stroke-opacity="0.5" class="flow-path" />
+    <line x1="920" y1="210" x2="920" y2="340" stroke="#fbbf24" stroke-width="1.5" stroke-opacity="0.5" class="flow-path" />
+
+    <!-- Inter-Domain Mesh Links -->
+    <line x1="800" y1="120" x2="820" y2="300" stroke="#475569" stroke-width="1" stroke-dasharray="2,4" />
+    <line x1="800" y1="120" x2="920" y2="80" stroke="#475569" stroke-width="1" stroke-dasharray="2,4" />
+    <line x1="1040" y1="130" x2="920" y2="80" stroke="#475569" stroke-width="1" stroke-dasharray="2,4" />
+    <line x1="1040" y1="130" x2="1050" y2="290" stroke="#475569" stroke-width="1" stroke-dasharray="2,4" />
+    <line x1="820" y1="300" x2="920" y2="340" stroke="#475569" stroke-width="1" stroke-dasharray="2,4" />
+    <line x1="1050" y1="290" x2="920" y2="340" stroke="#475569" stroke-width="1" stroke-dasharray="2,4" />
+
+    <!-- Leaf Satellite Connections -->
+    <line x1="800" y1="120" x2="730" y2="90" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.4" />
+    <line x1="800" y1="120" x2="740" y2="170" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.4" />
+    <line x1="1040" y1="130" x2="1110" y2="100" stroke="#c084fc" stroke-width="1" stroke-opacity="0.4" />
+    <line x1="1040" y1="130" x2="1115" y2="180" stroke="#c084fc" stroke-width="1" stroke-opacity="0.4" />
+    <line x1="820" y1="300" x2="750" y2="330" stroke="#818cf8" stroke-width="1" stroke-opacity="0.4" />
+    <line x1="1050" y1="290" x2="1120" y2="320" stroke="#34d399" stroke-width="1" stroke-opacity="0.4" />
+
+    <!-- Orbital Guides -->
+    <circle cx="920" cy="210" r="140" fill="none" stroke="#334155" stroke-width="1" stroke-dasharray="4,8" opacity="0.5" />
+    <circle cx="920" cy="210" r="80" fill="none" stroke="#475569" stroke-width="1" stroke-dasharray="2,6" opacity="0.4" />
+
+    <!-- Queen Coordinator Central Beacon (Agent 1) -->
+    <g transform="translate(920, 210)">
+      <circle cx="0" cy="0" r="14" fill="none" stroke="#38bdf8" class="ring-anim-1" />
+      <circle cx="0" cy="0" r="14" fill="none" stroke="#818cf8" class="ring-anim-2" />
+      <circle cx="0" cy="0" r="18" fill="#0f172a" stroke="url(#primary-grad)" stroke-width="2.5" filter="url(#soft-glow)" />
+      <circle cx="0" cy="0" r="8" fill="#38bdf8" />
+      <!-- Crown Icon / Star in Center -->
+      <polygon points="0,-5 3,-1 5,3 0,2 -5,3 -3,-1" fill="#ffffff" />
+    </g>
+
+    <!-- Domain Node: Security (Agent 2-4) -->
+    <g transform="translate(800, 120)" class="particle-1">
+      <circle cx="0" cy="0" r="12" fill="#0f172a" stroke="#38bdf8" stroke-width="2" filter="url(#soft-glow)" />
+      <circle cx="0" cy="0" r="5" fill="#38bdf8" />
+    </g>
+    <!-- Domain Node: Core Systems (Agent 5-9) -->
+    <g transform="translate(1040, 130)" class="particle-2">
+      <circle cx="0" cy="0" r="12" fill="#0f172a" stroke="#c084fc" stroke-width="2" filter="url(#soft-glow)" />
+      <circle cx="0" cy="0" r="5" fill="#c084fc" />
+    </g>
+    <!-- Domain Node: Integration & Neural (Agent 10-12) -->
+    <g transform="translate(820, 300)" class="particle-3">
+      <circle cx="0" cy="0" r="12" fill="#0f172a" stroke="#818cf8" stroke-width="2" filter="url(#soft-glow)" />
+      <circle cx="0" cy="0" r="5" fill="#818cf8" />
+    </g>
+    <!-- Domain Node: Quality & TDD (Agent 13) -->
+    <g transform="translate(1050, 290)" class="particle-1">
+      <circle cx="0" cy="0" r="12" fill="#0f172a" stroke="#34d399" stroke-width="2" filter="url(#soft-glow)" />
+      <circle cx="0" cy="0" r="5" fill="#34d399" />
+    </g>
+    <!-- Domain Node: Performance & Flash-Attn (Agent 14) -->
+    <g transform="translate(920, 80)" class="particle-2">
+      <circle cx="0" cy="0" r="10" fill="#0f172a" stroke="#f472b6" stroke-width="1.5" />
+      <circle cx="0" cy="0" r="4" fill="#f472b6" />
+    </g>
+    <!-- Domain Node: Deployment & Release (Agent 15) -->
+    <g transform="translate(920, 340)" class="particle-3">
+      <circle cx="0" cy="0" r="10" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5" />
+      <circle cx="0" cy="0" r="4" fill="#fbbf24" />
+    </g>
+
+    <!-- Satellite Mini Nodes -->
+    <circle cx="730" cy="90" r="4" fill="#38bdf8" opacity="0.8" />
+    <circle cx="740" cy="170" r="4" fill="#38bdf8" opacity="0.8" />
+    <circle cx="1110" cy="100" r="4" fill="#c084fc" opacity="0.8" />
+    <circle cx="1115" cy="180" r="4" fill="#c084fc" opacity="0.8" />
+    <circle cx="750" cy="330" r="4" fill="#818cf8" opacity="0.8" />
+    <circle cx="1120" cy="320" r="4" fill="#34d399" opacity="0.8" />
+  </g>
+
+  <!-- BRANDING & TYPOGRAPHY (Left Section) -->
+  <g transform="translate(80, 0)">
+    <!-- Top Pill Badge -->
+    <g transform="translate(0, 75)">
+      <rect width="260" height="28" rx="14" fill="#1e293b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.4" />
+      <circle cx="14" cy="14" r="4" fill="#38bdf8">
+        <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />
+      </circle>
+      <text x="26" y="18" fill="#38bdf8" class="text-badge">NEXT-GEN AI ORCHESTRATION</text>
+    </g>
+
+    <!-- Main Title -->
+    <g transform="translate(0, 160)">
+      <text x="0" y="0" fill="url(#primary-grad)" font-size="52" class="text-title" filter="url(#soft-glow)">CLAUDE-FLOW</text>
+      <text x="390" y="-14" fill="#38bdf8" font-size="24" class="text-badge" opacity="0.9">V3</text>
+    </g>
+
+    <!-- Subtitle -->
+    <text x="0" y="200" fill="#94a3b8" font-size="19" class="text-subtitle">
+      Autonomous Multi-Agent Swarm Intelligence &amp; MCP Framework
+    </text>
+
+    <!-- Key Architectural Feature Badges -->
+    <g transform="translate(0, 248)">
+      <!-- Badge 1: 15-Agent Mesh -->
+      <g transform="translate(0, 0)">
+        <rect width="148" height="34" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1" stroke-opacity="0.6" />
+        <text x="12" y="21" fill="#a5b4fc" class="text-badge">⚡ 15-AGENT MESH</text>
+      </g>
+
+      <!-- Badge 2: MCP Native -->
+      <g transform="translate(158, 0)">
+        <rect width="138" height="34" rx="8" fill="#0c4a6e" stroke="#0284c7" stroke-width="1" stroke-opacity="0.6" />
+        <text x="12" y="21" fill="#7dd3fc" class="text-badge">🔌 MCP NATIVE</text>
+      </g>
+
+      <!-- Badge 3: AgentDB HNSW -->
+      <g transform="translate(306, 0)">
+        <rect width="156" height="34" rx="8" fill="#2e1065" stroke="#9333ea" stroke-width="1" stroke-opacity="0.6" />
+        <text x="12" y="21" fill="#d8b4fe" class="text-badge">🧠 HNSW HYBRID</text>
+      </g>
+
+      <!-- Badge 4: Flash Attention -->
+      <g transform="translate(472, 0)">
+        <rect width="150" height="34" rx="8" fill="#064e3b" stroke="#059669" stroke-width="1" stroke-opacity="0.6" />
+        <text x="12" y="21" fill="#6ee7b7" class="text-badge">🚀 FLASH ATTN</text>
+      </g>
+    </g>
+
+    <!-- Bottom Specs / Footer Line -->
+    <g transform="translate(0, 328)">
+      <text x="0" y="0" fill="#64748b" font-size="13" font-family="ui-monospace, monospace">
+        <tspan fill="#38bdf8">●</tspan> Domain-Driven Design (DDD)
+        <tspan fill="#64748b" dx="12">|</tspan>
+        <tspan fill="#818cf8" dx="12">●</tspan> London School TDD
+        <tspan fill="#64748b" dx="12">|</tspan>
+        <tspan fill="#34d399" dx="12">●</tspan> Sub-100ms Latency
+      </text>
+    </g>
+  </g>
+</svg>

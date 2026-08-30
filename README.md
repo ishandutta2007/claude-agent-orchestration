@@ -1,8 +1,8 @@
 <div align="center">
 
-# ⚡ Claude-Flow V3: Multi-Agent AI Orchestration Framework
+<img src="./assets/banner.svg" alt="Claude-Flow V3 - Multi-Agent AI Orchestration Framework" width="100%">
 
-### *Next-Generation Autonomous Swarm Intelligence, Hierarchical-Mesh Coordination & MCP Integration*
+<br><br>
 
 [![npm version](https://img.shields.io/badge/npm-v3.0.0--alpha-blue.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/claude-flow)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20.0.0-green.svg?style=for-the-badge&logo=node.js)](https://nodejs.org/)
