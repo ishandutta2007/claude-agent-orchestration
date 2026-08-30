@@ -1,1 +1,1 @@
-export * from './WorkflowEngine';
+export { WorkflowEngine, type WorkflowEngineOptions } from './WorkflowEngine.js';

@@ -1,3 +1,3 @@
-export * from './Plugin';
-export * from './ExtensionPoint';
-export * from './PluginManager';
+export * from './Plugin.js';
+export * from './ExtensionPoint.js';
+export * from './PluginManager.js';

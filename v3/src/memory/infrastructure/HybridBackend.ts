@@ -1,75 +1,76 @@
-import { SQLiteBackend, Memory, MemoryQuery } from './SQLiteBackend';
-import { AgentDBBackend } from './AgentDBBackend';
+import { MemoryBackend, Memory, MemoryQuery, MemorySearchResult } from '../../shared/types/index.js';
+import { SQLiteBackend } from './SQLiteBackend.js';
+import { AgentDBBackend } from './AgentDBBackend.js';
 
-export class HybridBackend {
-  private sqliteBackend: SQLiteBackend;
-  private agentDbBackend: AgentDBBackend;
+/**
+ * Hybrid Memory Backend that composes SQLite and AgentDB backends.
+ */
+export class HybridBackend implements MemoryBackend {
+    private sqlite = new SQLiteBackend();
+    private agentDb = new AgentDBBackend();
 
-  constructor() {
-    this.sqliteBackend = new SQLiteBackend();
-    this.agentDbBackend = new AgentDBBackend();
-  }
-
-  async initialize(): Promise<void> {
-    await this.sqliteBackend.initialize();
-    await this.agentDbBackend.initialize();
-  }
-
-  async close(): Promise<void> {
-    await this.sqliteBackend.close();
-    await this.agentDbBackend.close();
-  }
-
-  async store(memory: Memory): Promise<void> {
-    await this.sqliteBackend.store(memory);
-    if (memory.embedding) {
-      await this.agentDbBackend.store(memory);
+    public async initialize(): Promise<void> {
+        await this.sqlite.initialize();
+        await this.agentDb.initialize();
     }
-  }
 
-  async retrieve(id: string): Promise<Memory | undefined> {
-    return this.sqliteBackend.retrieve(id);
-  }
-
-  async update(memory: Memory): Promise<void> {
-    await this.sqliteBackend.update(memory);
-    if (memory.embedding) {
-      await this.agentDbBackend.store(memory);
+    public async close(): Promise<void> {
+        await this.sqlite.close();
+        await this.agentDb.close();
     }
-  }
 
-  async delete(id: string): Promise<void> {
-    await this.sqliteBackend.delete(id);
-    await this.agentDbBackend.delete(id);
-  }
+    public async store(memory: Memory): Promise<Memory> {
+        await this.sqlite.store(memory);
+        if (memory.embedding && memory.embedding.length > 0) {
+            await this.agentDb.store(memory);
+        }
+        return memory;
+    }
 
-  async query(query: MemoryQuery): Promise<Memory[]> {
-    return this.sqliteBackend.query(query);
-  }
+    public async retrieve(id: string): Promise<Memory | undefined> {
+        return this.sqlite.retrieve(id);
+    }
 
-  async vectorSearch(embedding: number[], k: number): Promise<Memory[]> {
-    return this.agentDbBackend.vectorSearch(embedding, k);
-  }
+    public async update(memory: Memory): Promise<void> {
+        await this.sqlite.update(memory);
+        if (memory.embedding) {
+            await this.agentDb.update(memory);
+        }
+    }
 
-  async hybridSearch(query: MemoryQuery, embedding: number[], k: number): Promise<Memory[]> {
-    const filteredByQuery = await this.sqliteBackend.query(query);
-    const validIds = new Set(filteredByQuery.map(m => m.id));
+    public async delete(id: string): Promise<void> {
+        await this.sqlite.delete(id);
+        await this.agentDb.delete(id);
+    }
 
-    const vectorResults = await this.agentDbBackend.vectorSearch(embedding, validIds.size > 0 ? validIds.size : k * 10);
+    public async query(q: MemoryQuery): Promise<Memory[]> {
+        return this.sqlite.query(q);
+    }
+
+    public async vectorSearch(vector: number[], limit: number = 10): Promise<MemorySearchResult[]> {
+        return this.agentDb.vectorSearch(vector, limit);
+    }
+
+    public async hybridSearch(query: MemoryQuery, vector: number[], limit: number = 10): Promise<MemorySearchResult[]> {
+        const sqlResults = await this.sqlite.query(query);
+        const sqlIds = new Set(sqlResults.map(r => r.id));
+        
+        const vectorResults = await this.agentDb.vectorSearch(vector, limit * 2);
+        
+        return vectorResults
+            .filter(vr => sqlIds.has(vr.id))
+            .slice(0, limit);
+    }
+
+    public async clearAgent(agentId: string): Promise<void> {
+        await this.sqlite.clearAgent(agentId);
+        await this.agentDb.clearAgent(agentId);
+    }
     
-    const combined = vectorResults.filter(m => validIds.has(m.id));
-    return combined.slice(0, k);
-  }
-
-  async clearAgent(agentId: string): Promise<void> {
-    await this.sqliteBackend.clearAgent(agentId);
-    await this.agentDbBackend.clearAgent(agentId);
-  }
-
-  getStats(): { sqliteCount: number, agentDbCount: number } {
-    return {
-      sqliteCount: this.sqliteBackend.getCount(),
-      agentDbCount: 0 // Placeholder
-    };
-  }
+    public getStats(): Record<string, unknown> {
+        return {
+            sqliteRecords: this.sqlite.getCount(),
+            hybridMode: true
+        };
+    }
 }

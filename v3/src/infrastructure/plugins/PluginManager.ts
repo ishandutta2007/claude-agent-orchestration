@@ -1,153 +1,148 @@
-import { Plugin } from './Plugin';
-import { ExtensionPointRegistry } from './ExtensionPoint';
+import { Plugin, PluginManagerInterface, ExtensionPoint } from '../../shared/types/index.js';
 
 export interface PluginManagerOptions {
-  eventBus: any;
-  coreVersion: string;
+    eventBus?: any;
+    coreVersion?: string;
 }
 
 /**
- * PluginManager manages the lifecycle of plugins and extension points.
+ * Manages the lifecycle and execution of plugins.
  */
-export class PluginManager {
-  private plugins: Map<string, Plugin> = new Map();
-  private extensionPoints: ExtensionPointRegistry = new ExtensionPointRegistry();
-  private eventBus: any;
-  private coreVersion: string;
-  private initialized: boolean = false;
+export class PluginManager implements PluginManagerInterface {
+    private plugins: Map<string, Plugin> = new Map();
+    private extensionPoints: Map<string, Array<{ pluginId: string; handler: (context: unknown) => Promise<unknown>; priority?: number }>> = new Map();
+    private eventBus: any;
+    private coreVersion: string;
 
-  constructor(options: PluginManagerOptions) {
-    this.eventBus = options.eventBus;
-    this.coreVersion = options.coreVersion;
-  }
-
-  async initialize(): Promise<void> {
-    this.initialized = true;
-  }
-
-  async shutdown(): Promise<void> {
-    for (const pluginId of this.plugins.keys()) {
-      await this.unloadPlugin(pluginId);
-    }
-    this.initialized = false;
-  }
-
-  async loadPlugin(plugin: Plugin, config?: any): Promise<void> {
-    if (this.plugins.has(plugin.id)) {
-      throw new Error(`Plugin ${plugin.id} is already loaded`);
+    constructor(options: PluginManagerOptions = {}) {
+        this.coreVersion = options.coreVersion || '3.0.0';
+        this.eventBus = options.eventBus;
     }
 
-    this.validateConfig(plugin, config);
-    this.checkVersionCompatibility(plugin);
-    this.checkDependencies(plugin);
-
-    if (typeof (plugin as any).initialize === 'function') {
-      await (plugin as any).initialize(config);
+    public async initialize(): Promise<void> {
+        // Core initialization logic
     }
 
-    this.registerExtensionPoints(plugin);
-    this.plugins.set(plugin.id, plugin);
-    this.eventBus?.emit('plugin:loaded', { pluginId: plugin.id });
-  }
-
-  async unloadPlugin(pluginId: string): Promise<void> {
-    const plugin = this.plugins.get(pluginId);
-    if (!plugin) return;
-
-    for (const p of this.plugins.values()) {
-      if (p.dependencies && p.dependencies[pluginId]) {
-        throw new Error(`Cannot unload plugin ${pluginId}, it is required by ${p.id}`);
-      }
-    }
-
-    if (typeof (plugin as any).shutdown === 'function') {
-      await (plugin as any).shutdown();
-    }
-
-    if (typeof (plugin as any).getExtensionPoints === 'function') {
-      const eps = (plugin as any).getExtensionPoints();
-      for (const ep of eps) {
-        this.extensionPoints.unregister(ep.name, plugin.id);
-      }
-    }
-
-    this.plugins.delete(pluginId);
-    this.eventBus?.emit('plugin:unloaded', { pluginId });
-  }
-
-  async reloadPlugin(pluginId: string, plugin: Plugin, config?: any): Promise<void> {
-    await this.unloadPlugin(pluginId);
-    await this.loadPlugin(plugin, config);
-  }
-
-  listPlugins(): Plugin[] {
-    return Array.from(this.plugins.values());
-  }
-
-  getPluginMetadata(pluginId: string): Plugin | undefined {
-    return this.plugins.get(pluginId);
-  }
-
-  async invokeExtensionPoint(name: string, context: any): Promise<any[]> {
-    return this.extensionPoints.invoke(name, context);
-  }
-
-  getCoreVersion(): string {
-    return this.coreVersion;
-  }
-
-  private registerExtensionPoints(plugin: Plugin): void {
-    if (typeof (plugin as any).getExtensionPoints === 'function') {
-      const eps = (plugin as any).getExtensionPoints();
-      for (const ep of eps) {
-        this.extensionPoints.register(ep.name, plugin.id, ep.handler, ep.priority);
-      }
-    }
-  }
-
-  private validateConfig(plugin: Plugin, config: any): void {
-    if (plugin.configSchema && !config) {
-      // Configuration validation placeholder
-    }
-  }
-
-  private checkVersionCompatibility(plugin: Plugin): void {
-    if (plugin.minCoreVersion) {
-      if (this.compareVersions(this.coreVersion, plugin.minCoreVersion) < 0) {
-        throw new Error(`Core version ${this.coreVersion} is less than required min version ${plugin.minCoreVersion} for plugin ${plugin.id}`);
-      }
-    }
-    if (plugin.maxCoreVersion) {
-      if (this.compareVersions(this.coreVersion, plugin.maxCoreVersion) > 0) {
-        throw new Error(`Core version ${this.coreVersion} is greater than allowed max version ${plugin.maxCoreVersion} for plugin ${plugin.id}`);
-      }
-    }
-  }
-
-  private checkDependencies(plugin: Plugin): void {
-    if (plugin.dependencies) {
-      for (const depId of Object.keys(plugin.dependencies)) {
-        if (!this.plugins.has(depId)) {
-          throw new Error(`Missing dependency ${depId} for plugin ${plugin.id}`);
+    public async shutdown(): Promise<void> {
+        for (const pluginId of Array.from(this.plugins.keys())) {
+            await this.unloadPlugin(pluginId);
         }
-      }
     }
-  }
 
-  private parseVersion(version: string): number[] {
-    return version.replace(/[^0-9.]/g, '').split('.').map(Number);
-  }
+    public async loadPlugin(plugin: Plugin, config?: unknown): Promise<void> {
+        if (this.plugins.has(plugin.id)) {
+            throw new Error(`Plugin ${plugin.id} already loaded.`);
+        }
 
-  private compareVersions(v1: string, v2: string): number {
-    const p1 = this.parseVersion(v1);
-    const p2 = this.parseVersion(v2);
-    const len = Math.max(p1.length, p2.length);
-    for (let i = 0; i < len; i++) {
-      const num1 = p1[i] || 0;
-      const num2 = p2[i] || 0;
-      if (num1 > num2) return 1;
-      if (num1 < num2) return -1;
+        if (!this.checkVersionCompatibility(plugin.minCoreVersion, plugin.maxCoreVersion)) {
+            throw new Error(`Plugin ${plugin.id} is not compatible with core version ${this.coreVersion}.`);
+        }
+
+        if (plugin.dependencies) {
+            for (const dep of plugin.dependencies) {
+                if (!this.plugins.has(dep)) {
+                    throw new Error(`Plugin ${plugin.id} requires missing dependency: ${dep}`);
+                }
+            }
+        }
+
+        if (plugin.configSchema) {
+            this.validateConfig(plugin.configSchema, config);
+        }
+
+        await plugin.initialize(config);
+
+        const eps = plugin.getExtensionPoints();
+        for (const ep of eps) {
+            const list = this.extensionPoints.get(ep.name) || [];
+            list.push({ pluginId: plugin.id, handler: ep.handler, priority: ep.priority });
+            list.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+            this.extensionPoints.set(ep.name, list);
+        }
+
+        this.plugins.set(plugin.id, plugin);
+
+        if (this.eventBus) {
+            this.eventBus.emit('plugin:loaded', { id: plugin.id });
+        }
     }
-    return 0;
-  }
+
+    public async unloadPlugin(id: string): Promise<void> {
+        const plugin = this.plugins.get(id);
+        if (!plugin) return;
+
+        for (const p of this.plugins.values()) {
+            if (p.dependencies && p.dependencies.includes(id)) {
+                throw new Error(`Cannot unload ${id}, it is required by ${p.id}`);
+            }
+        }
+
+        await plugin.shutdown();
+
+        for (const [name, list] of this.extensionPoints.entries()) {
+            this.extensionPoints.set(name, list.filter(ep => ep.pluginId !== id));
+        }
+
+        this.plugins.delete(id);
+
+        if (this.eventBus) {
+            this.eventBus.emit('plugin:unloaded', { id });
+        }
+    }
+
+    public async reloadPlugin(id: string, plugin: Plugin): Promise<void> {
+        await this.unloadPlugin(id);
+        await this.loadPlugin(plugin);
+    }
+
+    public listPlugins(): Plugin[] {
+        return Array.from(this.plugins.values());
+    }
+
+    public getPluginMetadata(id: string): Plugin | undefined {
+        return this.plugins.get(id);
+    }
+
+    public async invokeExtensionPoint(name: string, context: unknown): Promise<unknown[]> {
+        const handlers = this.extensionPoints.get(name) || [];
+        const results = [];
+        for (const ep of handlers) {
+            try {
+                results.push(await ep.handler(context));
+            } catch (err) {
+                console.error(`Error executing extension point ${name} for plugin ${ep.pluginId}:`, err);
+            }
+        }
+        return results;
+    }
+
+    public getCoreVersion(): string {
+        return this.coreVersion;
+    }
+
+    private parseVersion(version: string): number[] {
+        return version.split('.').map(Number);
+    }
+
+    private compareVersions(v1: string, v2: string): number {
+        const p1 = this.parseVersion(v1);
+        const p2 = this.parseVersion(v2);
+        for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+            const num1 = p1[i] || 0;
+            const num2 = p2[i] || 0;
+            if (num1 > num2) return 1;
+            if (num1 < num2) return -1;
+        }
+        return 0;
+    }
+
+    private checkVersionCompatibility(min?: string, max?: string): boolean {
+        if (min && this.compareVersions(this.coreVersion, min) < 0) return false;
+        if (max && this.compareVersions(this.coreVersion, max) > 0) return false;
+        return true;
+    }
+
+    private validateConfig(schema: unknown, config: unknown): void {
+        // Config schema validation logic can be implemented here
+    }
 }

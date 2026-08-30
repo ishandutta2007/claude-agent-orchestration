@@ -1,50 +1,78 @@
-import { Memory } from './SQLiteBackend';
+import { MemoryBackend, Memory, MemoryQuery, MemorySearchResult } from '../../shared/types/index.js';
 
-export class AgentDBBackend {
-  private memories: Map<string, Memory> = new Map();
-  private dimensions: number = 1536;
+/**
+ * Agent DB Memory Backend optimized for vector operations.
+ */
+export class AgentDBBackend implements MemoryBackend {
+    private data: Map<string, Memory> = new Map();
 
-  async initialize(): Promise<void> {}
-  async close(): Promise<void> { this.memories.clear(); }
+    public async initialize(): Promise<void> {}
+    public async close(): Promise<void> {}
 
-  async store(memory: Memory): Promise<void> {
-    if (memory.embedding && memory.embedding.length !== this.dimensions && this.memories.size === 0) {
-        this.dimensions = memory.embedding.length;
+    public async store(memory: Memory): Promise<Memory> {
+        this.data.set(memory.id, memory);
+        return memory;
     }
-    this.memories.set(memory.id, memory);
-  }
 
-  async retrieve(id: string): Promise<Memory | undefined> {
-    return this.memories.get(id);
-  }
-
-  async delete(id: string): Promise<void> {
-    this.memories.delete(id);
-  }
-
-  async vectorSearch(embedding: number[], k: number): Promise<Memory[]> {
-    const results = Array.from(this.memories.values()).filter(m => m.embedding);
-    
-    results.sort((a, b) => this.cosineSimilarity(embedding, b.embedding!) - this.cosineSimilarity(embedding, a.embedding!));
-    return results.slice(0, k);
-  }
-
-  private cosineSimilarity(a: number[], b: number[]): number {
-    let dot = 0, normA = 0, normB = 0;
-    const len = Math.min(a.length, b.length);
-    for (let i = 0; i < len; i++) {
-      dot += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
+    public async retrieve(id: string): Promise<Memory | undefined> {
+        return this.data.get(id);
     }
-    return normA === 0 || normB === 0 ? 0 : dot / (Math.sqrt(normA) * Math.sqrt(normB));
-  }
 
-  async clearAgent(agentId: string): Promise<void> {
-    for (const [id, mem] of this.memories.entries()) {
-      if (mem.agentId === agentId) {
-        this.memories.delete(id);
-      }
+    public async update(memory: Memory): Promise<void> {
+        if (this.data.has(memory.id)) this.data.set(memory.id, memory);
     }
-  }
+
+    public async delete(id: string): Promise<void> {
+        this.data.delete(id);
+    }
+
+    public async query(q: MemoryQuery): Promise<Memory[]> {
+        let results = Array.from(this.data.values());
+        if (q.agentId) results = results.filter(m => m.agentId === q.agentId);
+        if (q.type) results = results.filter(m => m.type === q.type);
+        if (q.timeRange) {
+            results = results.filter(m => m.timestamp >= q.timeRange!.start && m.timestamp <= q.timeRange!.end);
+        }
+        if (q.metadata) {
+            results = results.filter(m => {
+                for (const k in q.metadata) {
+                    if (m.metadata?.[k] !== q.metadata[k]) return false;
+                }
+                return true;
+            });
+        }
+        if (q.offset) results = results.slice(q.offset);
+        if (q.limit) results = results.slice(0, q.limit);
+        return results;
+    }
+
+    public async vectorSearch(vector: number[], limit: number = 10): Promise<MemorySearchResult[]> {
+        const results = Array.from(this.data.values())
+            .filter(m => m.embedding)
+            .map(m => {
+                const sim = this.cosineSimilarity(vector, m.embedding!);
+                return { ...m, similarity: sim } as MemorySearchResult;
+            });
+        results.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+        return results.slice(0, limit);
+    }
+
+    public async clearAgent(agentId: string): Promise<void> {
+        for (const [id, mem] of this.data.entries()) {
+            if (mem.agentId === agentId) {
+                this.data.delete(id);
+            }
+        }
+    }
+
+    private cosineSimilarity(a: number[], b: number[]): number {
+        let dotProduct = 0, normA = 0, normB = 0;
+        for (let i = 0; i < Math.min(a.length, b.length); i++) {
+            dotProduct += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        if (normA === 0 || normB === 0) return 0;
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
 }

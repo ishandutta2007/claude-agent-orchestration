@@ -1,72 +1,55 @@
-import { MCPToolProvider } from '../MCPServer';
+import { MCPToolProvider, MCPTool, MCPToolResult } from '../../../shared/types/index.js';
+import { SwarmCoordinator } from '../../../coordination/application/SwarmCoordinator.js';
 
+/**
+ * Tool provider for Agent operations.
+ */
 export class AgentTools implements MCPToolProvider {
-  private coordinator: any;
+    constructor(private swarmCoordinator: SwarmCoordinator) {}
 
-  constructor(coordinator: any) {
-    this.coordinator = coordinator;
-  }
-
-  getTools(): any[] {
-    return [
-      {
-        name: 'agent_spawn',
-        description: 'Spawn a new agent',
-        parameters: { 
-          type: 'object', 
-          properties: { 
-            id: { type: 'string' }, 
-            type: { type: 'string' }, 
-            capabilities: { type: 'array', items: { type: 'string' } } 
-          }, 
-          required: ['id', 'type'] 
-        }
-      },
-      {
-        name: 'agent_list',
-        description: 'List all agents'
-      },
-      {
-        name: 'agent_terminate',
-        description: 'Terminate an agent',
-        parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }
-      },
-      {
-        name: 'agent_metrics',
-        description: 'Get metrics for an agent',
-        parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }
-      }
-    ];
-  }
-
-  async execute(toolName: string, params: any): Promise<any> {
-    switch (toolName) {
-      case 'agent_spawn': return this.spawnAgent(params);
-      case 'agent_list': return this.listAgents();
-      case 'agent_terminate': return this.terminateAgent(params);
-      case 'agent_metrics': return this.getAgentMetrics(params);
-      default: throw new Error(`Unknown tool: ${toolName}`);
+    public getTools(): MCPTool[] {
+        return [
+            { name: 'agent_spawn', description: 'Spawn an agent', parameters: { id: 'string', type: 'string', capabilities: 'array' } },
+            { name: 'agent_list', description: 'List agents', parameters: {} },
+            { name: 'agent_terminate', description: 'Terminate an agent', parameters: { id: 'string' } },
+            { name: 'agent_metrics', description: 'Get agent metrics', parameters: { id: 'string' } }
+        ];
     }
-  }
 
-  private async spawnAgent(params: any): Promise<any> {
-    if (!params.id || typeof params.id !== 'string') throw new Error('Agent ID is required and must be a string');
-    const validTypes = ['task', 'coordinator', 'evaluator'];
-    if (!validTypes.includes(params.type)) throw new Error(`Invalid agent type: ${params.type}`);
-    if (params.capabilities && !Array.isArray(params.capabilities)) throw new Error('Capabilities must be an array');
-    
-    return { status: 'success', id: params.id };
-  }
+    public async execute(toolName: string, params: Record<string, unknown>): Promise<MCPToolResult> {
+        switch (toolName) {
+            case 'agent_spawn': return this.spawn(params);
+            case 'agent_list': return this.list(params);
+            case 'agent_terminate': return this.terminate(params);
+            case 'agent_metrics': return this.metrics(params);
+            default: throw new Error(`Unknown tool: ${toolName}`);
+        }
+    }
 
-  private async listAgents(): Promise<any> {
-    return { agents: [] };
-  }
+    private async spawn(params: Record<string, unknown>): Promise<MCPToolResult> {
+        const { id, type, capabilities } = params;
+        if (typeof id !== 'string' || !id.trim()) throw new Error('Invalid id');
+        if (typeof type !== 'string' || !['worker', 'manager', 'specialist'].includes(type)) throw new Error('Invalid type');
+        if (!Array.isArray(capabilities)) throw new Error('Capabilities must be an array');
+        
+        // Example integration
+        // await this.swarmCoordinator.spawnAgent({ id, type, capabilities });
+        return { success: true, agent: { id, type, capabilities } as any };
+    }
 
-  private async terminateAgent(params: any): Promise<any> {
-    return { status: 'success', id: params.id };
-  }
+    private async list(params: Record<string, unknown>): Promise<MCPToolResult> {
+        return { success: true, agents: [] };
+    }
 
-  private async getAgentMetrics(params: any): Promise<any> {
-    return { id: params.id, metrics: { cpu: 0, memory: 0 } };
-  }
+    private async terminate(params: Record<string, unknown>): Promise<MCPToolResult> {
+        const { id } = params;
+        if (typeof id !== 'string' || !id.trim()) throw new Error('Invalid id');
+        return { success: true };
+    }
+
+    private async metrics(params: Record<string, unknown>): Promise<MCPToolResult> {
+        const { id } = params;
+        if (typeof id !== 'string' || !id.trim()) throw new Error('Invalid id');
+        return { success: true, metrics: {} };
+    }
 }

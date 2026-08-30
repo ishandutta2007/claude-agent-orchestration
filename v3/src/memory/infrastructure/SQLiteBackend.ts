@@ -1,103 +1,84 @@
-export interface Memory {
-  id: string;
-  agentId: string;
-  type: string;
-  content: string;
-  timestamp: number;
-  metadata?: any;
-  embedding?: number[];
-}
+import { MemoryBackend, Memory, MemoryQuery, MemorySearchResult } from '../../shared/types/index.js';
 
-export interface MemoryQuery {
-  agentId?: string;
-  type?: string;
-  timeRange?: { start?: number; end?: number };
-  metadata?: any;
-  limit?: number;
-  offset?: number;
-}
+/**
+ * SQLite-based Memory Backend.
+ */
+export class SQLiteBackend implements MemoryBackend {
+    private storeData: Map<string, Memory> = new Map();
 
-export class SQLiteBackend {
-  private memories: Map<string, Memory> = new Map();
+    public async initialize(): Promise<void> {}
+    public async close(): Promise<void> {}
 
-  async initialize(): Promise<void> {}
-  async close(): Promise<void> { this.memories.clear(); }
-
-  async store(memory: Memory): Promise<void> {
-    this.memories.set(memory.id, memory);
-  }
-
-  async retrieve(id: string): Promise<Memory | undefined> {
-    return this.memories.get(id);
-  }
-
-  async update(memory: Memory): Promise<void> {
-    if (this.memories.has(memory.id)) {
-      this.memories.set(memory.id, memory);
-    }
-  }
-
-  async delete(id: string): Promise<void> {
-    this.memories.delete(id);
-  }
-
-  async query(query: MemoryQuery): Promise<Memory[]> {
-    let results = Array.from(this.memories.values());
-
-    if (query.agentId) {
-      results = results.filter(m => m.agentId === query.agentId);
-    }
-    if (query.type) {
-      results = results.filter(m => m.type === query.type);
-    }
-    if (query.timeRange) {
-      if (query.timeRange.start !== undefined) {
-        results = results.filter(m => m.timestamp >= query.timeRange!.start!);
-      }
-      if (query.timeRange.end !== undefined) {
-        results = results.filter(m => m.timestamp <= query.timeRange!.end!);
-      }
-    }
-    
-    if (query.metadata) {
-      const keys = Object.keys(query.metadata);
-      results = results.filter(m => {
-        if (!m.metadata) return false;
-        return keys.every(k => m.metadata![k] === query.metadata![k]);
-      });
+    public async store(memory: Memory): Promise<Memory> {
+        this.storeData.set(memory.id, memory);
+        return memory;
     }
 
-    const offset = query.offset || 0;
-    const limit = query.limit || results.length;
-    return results.slice(offset, offset + limit);
-  }
-
-  async vectorSearch(embedding: number[], k: number): Promise<Memory[]> {
-    const results = Array.from(this.memories.values()).filter(m => m.embedding);
-    
-    const cosineSim = (a: number[], b: number[]) => {
-      let dot = 0, normA = 0, normB = 0;
-      for (let i = 0; i < a.length; i++) {
-        dot += a[i] * (b[i] || 0);
-        normA += a[i] * a[i];
-        normB += (b[i] || 0) * (b[i] || 0);
-      }
-      return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-    };
-
-    results.sort((a, b) => cosineSim(embedding, b.embedding!) - cosineSim(embedding, a.embedding!));
-    return results.slice(0, k);
-  }
-
-  async clearAgent(agentId: string): Promise<void> {
-    for (const [id, mem] of this.memories.entries()) {
-      if (mem.agentId === agentId) {
-        this.memories.delete(id);
-      }
+    public async retrieve(id: string): Promise<Memory | undefined> {
+        return this.storeData.get(id);
     }
-  }
 
-  getCount(): number {
-    return this.memories.size;
-  }
+    public async update(memory: Memory): Promise<void> {
+        if (this.storeData.has(memory.id)) {
+            this.storeData.set(memory.id, memory);
+        }
+    }
+
+    public async delete(id: string): Promise<void> {
+        this.storeData.delete(id);
+    }
+
+    public async query(q: MemoryQuery): Promise<Memory[]> {
+        let results = Array.from(this.storeData.values());
+        if (q.agentId) results = results.filter(m => m.agentId === q.agentId);
+        if (q.type) results = results.filter(m => m.type === q.type);
+        if (q.timeRange) {
+            results = results.filter(m => m.timestamp >= q.timeRange!.start && m.timestamp <= q.timeRange!.end);
+        }
+        if (q.metadata) {
+            results = results.filter(m => {
+                for (const k in q.metadata) {
+                    if (m.metadata?.[k] !== q.metadata[k]) return false;
+                }
+                return true;
+            });
+        }
+        if (q.offset) results = results.slice(q.offset);
+        if (q.limit) results = results.slice(0, q.limit);
+        return results;
+    }
+
+    public async vectorSearch(vector: number[], limit: number = 10): Promise<MemorySearchResult[]> {
+        const results = Array.from(this.storeData.values())
+            .filter(m => m.embedding)
+            .map(m => {
+                const sim = this.cosineSimilarity(vector, m.embedding!);
+                return { ...m, similarity: sim } as MemorySearchResult;
+            });
+        results.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+        return results.slice(0, limit);
+    }
+
+    public async clearAgent(agentId: string): Promise<void> {
+        for (const [id, mem] of this.storeData.entries()) {
+            if (mem.agentId === agentId) {
+                this.storeData.delete(id);
+            }
+        }
+    }
+
+    public getCount(): number {
+        return this.storeData.size;
+    }
+
+    private cosineSimilarity(a: number[], b: number[]): number {
+        let dotProduct = 0, normA = 0, normB = 0;
+        for (let i = 0; i < Math.min(a.length, b.length); i++) {
+            dotProduct += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        if (normA === 0 || normB === 0) return 0;
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
 }

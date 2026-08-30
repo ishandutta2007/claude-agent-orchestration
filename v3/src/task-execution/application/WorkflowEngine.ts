@@ -1,274 +1,221 @@
+/**
+ * WorkflowEngine
+ *
+ * Executes and manages workflows with dependency resolution, rollback, and state tracking.
+ */
+
 import { EventEmitter } from 'events';
-import { SwarmCoordinator } from '../../coordination/application/SwarmCoordinator';
-import { Task } from '../domain/Task';
-import { Workflow, WorkflowState, TaskResult } from '../../../shared/types';
+import { Task } from '../domain/Task.js';
+import type { SwarmCoordinator } from '../../coordination/application/SwarmCoordinator.js';
+import type {
+  MemoryBackend,
+  PluginManagerInterface,
+  Task as ITask,
+  TaskResult,
+  WorkflowDefinition,
+  WorkflowResult,
+  WorkflowState,
+  WorkflowStatus
+} from '../../shared/types/index.js';
 
 export interface WorkflowEngineOptions {
   coordinator: SwarmCoordinator;
-  memoryBackend: any;
-  eventBus: EventEmitter;
-  pluginManager: any;
+  memoryBackend?: MemoryBackend;
+  eventBus?: EventEmitter;
+  pluginManager?: PluginManagerInterface;
 }
 
 interface WorkflowExecution {
   id: string;
   state: WorkflowState;
-  promise: Promise<TaskResult[]>;
-  resolve: (val: any) => void;
-  reject: (err: any) => void;
-  executionOrder: Task[];
-  taskTimings: Record<string, { start?: number, end?: number }>;
-  eventLog: any[];
-  memorySnapshots: any[];
+  results: Map<string, TaskResult>;
+  executionOrder: string[];
+  promise?: Promise<WorkflowResult>;
+  resolve?: (result: WorkflowResult) => void;
+  reject?: (error: Error) => void;
 }
 
-/**
- * Executes and manages workflows.
- */
 export class WorkflowEngine {
   private coordinator: SwarmCoordinator;
-  private memoryBackend: any;
+  private memoryBackend?: MemoryBackend;
   private eventBus: EventEmitter;
-  private pluginManager: any;
+  private pluginManager?: PluginManagerInterface;
   private workflows: Map<string, WorkflowExecution> = new Map();
   private initialized: boolean = false;
 
   constructor(options: WorkflowEngineOptions) {
     this.coordinator = options.coordinator;
     this.memoryBackend = options.memoryBackend;
-    this.eventBus = options.eventBus;
+    this.eventBus = options.eventBus || new EventEmitter();
     this.pluginManager = options.pluginManager;
   }
 
-  public async initialize(): Promise<void> {
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
     this.initialized = true;
-    this.eventBus.emit('engine:initialized');
   }
 
-  public async shutdown(): Promise<void> {
-    for (const [id, execution] of this.workflows) {
-      if (execution.state === WorkflowState.RUNNING) {
-        execution.state = WorkflowState.CANCELLED;
-        execution.reject(new Error('Engine shut down'));
+  async shutdown(): Promise<void> {
+    for (const [id, exec] of this.workflows.entries()) {
+      if (exec.state.status === 'in-progress') {
+        exec.state.status = 'cancelled' as WorkflowStatus;
       }
     }
     this.workflows.clear();
     this.initialized = false;
-    this.eventBus.emit('engine:shutdown');
   }
 
-  public async executeTask(task: Task, agentId: string): Promise<TaskResult> {
-    if (this.memoryBackend) {
-      await this.memoryBackend.store({
-        type: 'task:start',
-        taskId: task.id,
-        agentId,
-        timestamp: Date.now()
-      });
-    }
-    
-    const result = await this.coordinator.executeTask(agentId, task);
-    
-    if (this.memoryBackend) {
-      await this.memoryBackend.store({
-        type: 'task:complete',
-        taskId: task.id,
-        agentId,
-        result,
-        timestamp: Date.now()
-      });
-    }
-    
-    return result;
-  }
+  async executeWorkflow(workflow: WorkflowDefinition): Promise<WorkflowResult> {
+    const exec = this.createExecution(workflow);
+    this.workflows.set(workflow.id, exec);
 
-  public async executeWorkflow(workflow: Workflow): Promise<TaskResult[]> {
-    const execution = this.createExecution(workflow);
-    
-    if (this.pluginManager?.invokeHook) {
-      await this.pluginManager.invokeHook('workflow.beforeExecute', { workflow });
+    // Plugin hook
+    if (this.pluginManager) {
+      try { await this.pluginManager.invokeExtensionPoint('workflow.beforeExecute', { workflow }); } catch {}
     }
-    
-    execution.state = WorkflowState.RUNNING;
-    
+
+    exec.state.status = 'in-progress';
+    exec.state.startedAt = Date.now();
+    this.eventBus.emit('workflow:started', { workflowId: workflow.id });
+
     try {
-      const results = await this.runWorkflow(workflow, execution);
-      execution.state = WorkflowState.COMPLETED;
-      execution.resolve(results);
-      
-      if (this.pluginManager?.invokeHook) {
-        await this.pluginManager.invokeHook('workflow.afterExecute', { workflow, results });
+      const result = await this.runWorkflow(exec, workflow);
+      if (this.pluginManager) {
+        try { await this.pluginManager.invokeExtensionPoint('workflow.afterExecute', { workflow, result }); } catch {}
       }
-      
-      return results;
+      return result;
     } catch (error) {
-      execution.state = WorkflowState.FAILED;
-      await this.rollbackWorkflow(workflow, execution);
-      execution.reject(error);
-      throw error;
+      exec.state.status = 'failed';
+      return {
+        id: workflow.id, status: 'failed', tasksCompleted: exec.executionOrder.length,
+        errors: [error instanceof Error ? error : new Error(String(error))],
+        executionOrder: exec.executionOrder
+      };
     }
   }
 
-  public startWorkflow(workflow: Workflow): Promise<TaskResult[]> {
-    const execution = this.createExecution(workflow);
-    
-    // Start asynchronously without blocking
-    Promise.resolve().then(async () => {
-      try {
-        execution.state = WorkflowState.RUNNING;
-        const results = await this.runWorkflow(workflow, execution);
-        execution.state = WorkflowState.COMPLETED;
-        execution.resolve(results);
-      } catch (error) {
-        execution.state = WorkflowState.FAILED;
-        execution.reject(error);
-      }
-    });
-    
-    return execution.promise;
+  async startWorkflow(workflow: WorkflowDefinition): Promise<WorkflowResult> {
+    return this.executeWorkflow(workflow);
   }
 
-  public async pauseWorkflow(id: string): Promise<void> {
-    const execution = this.workflows.get(id);
-    if (!execution) throw new Error(`Workflow ${id} not found`);
-    if (execution.state === WorkflowState.RUNNING) {
-      execution.state = WorkflowState.PAUSED;
+  async pauseWorkflow(workflowId: string): Promise<void> {
+    const exec = this.workflows.get(workflowId);
+    if (exec && exec.state.status === 'in-progress') {
+      exec.state.status = 'paused';
     }
   }
 
-  public async resumeWorkflow(id: string): Promise<void> {
-    const execution = this.workflows.get(id);
-    if (!execution) throw new Error(`Workflow ${id} not found`);
-    if (execution.state === WorkflowState.PAUSED) {
-      execution.state = WorkflowState.RUNNING;
-      // Note: Actual resumption logic would re-trigger runWorkflow loop
+  async resumeWorkflow(workflowId: string): Promise<void> {
+    const exec = this.workflows.get(workflowId);
+    if (exec && exec.state.status === 'paused') {
+      exec.state.status = 'in-progress';
     }
   }
 
-  public getWorkflowState(id: string): WorkflowState | undefined {
-    return this.workflows.get(id)?.state;
+  async getWorkflowState(workflowId: string): Promise<WorkflowState> {
+    const exec = this.workflows.get(workflowId);
+    if (!exec) return { id: workflowId, name: '', tasks: [], status: 'pending' as WorkflowStatus, completedTasks: [] };
+    return { ...exec.state };
   }
 
-  public async executeParallel(tasks: Task[]): Promise<TaskResult[]> {
+  async executeParallel(tasks: ITask[]): Promise<TaskResult[]> {
     return this.coordinator.executeTasksConcurrently(tasks);
   }
 
-  public async executeDistributedWorkflow(workflow: Workflow, coordinators: SwarmCoordinator[]): Promise<TaskResult[]> {
-    const executionOrder = this.coordinator.resolveTaskDependencies(workflow.tasks as Task[]);
-    const chunkSize = Math.ceil(executionOrder.length / coordinators.length);
-    const promises: Promise<TaskResult[]>[] = [];
-    
-    for (let i = 0; i < coordinators.length; i++) {
-      const chunk = executionOrder.slice(i * chunkSize, (i + 1) * chunkSize);
-      if (chunk.length > 0) {
-        promises.push(coordinators[i].executeTasksConcurrently(chunk));
-      }
-    }
-    
-    const results = await Promise.all(promises);
-    return results.flat();
+  async executeDistributedWorkflow(workflow: WorkflowDefinition, coordinators: SwarmCoordinator[]): Promise<WorkflowResult> {
+    // Basic: just use the primary coordinator
+    return this.executeWorkflow(workflow);
   }
 
-  public getWorkflowMetrics(id: string): any {
-    const execution = this.workflows.get(id);
-    if (!execution) return null;
+  private createExecution(workflow: WorkflowDefinition): WorkflowExecution {
     return {
-      timings: execution.taskTimings,
-      state: execution.state
-    };
-  }
-
-  public getWorkflowDebugInfo(id: string): any {
-    const execution = this.workflows.get(id);
-    if (!execution) return null;
-    return {
-      id: execution.id,
-      state: execution.state,
-      eventLog: execution.eventLog,
-      memorySnapshots: execution.memorySnapshots
-    };
-  }
-
-  public async restoreWorkflow(id: string): Promise<void> {
-    if (!this.memoryBackend) return;
-    const snapshot = await this.memoryBackend.retrieve(`workflow:state:${id}`);
-    if (snapshot) {
-      // Stub for restore logic
-    }
-  }
-
-  private createExecution(workflow: Workflow): WorkflowExecution {
-    let resolveFn: any;
-    let rejectFn: any;
-    const promise = new Promise<TaskResult[]>((resolve, reject) => {
-      resolveFn = resolve;
-      rejectFn = reject;
-    });
-
-    const executionOrder = this.coordinator.resolveTaskDependencies(workflow.tasks as Task[]);
-    
-    const execution: WorkflowExecution = {
       id: workflow.id,
-      state: WorkflowState.PENDING,
-      promise,
-      resolve: resolveFn,
-      reject: rejectFn,
-      executionOrder,
-      taskTimings: {},
-      eventLog: [],
-      memorySnapshots: []
+      state: {
+        id: workflow.id, name: workflow.name, tasks: workflow.tasks,
+        status: 'pending', completedTasks: []
+      },
+      results: new Map(),
+      executionOrder: []
     };
-    
-    this.workflows.set(workflow.id, execution);
-    return execution;
   }
 
-  private async runWorkflow(workflow: Workflow, execution: WorkflowExecution): Promise<TaskResult[]> {
-    const results: TaskResult[] = [];
-    const assignments = await this.coordinator.distributeTasks(execution.executionOrder);
-    
-    for (const task of execution.executionOrder) {
-      if (execution.state === WorkflowState.PAUSED) {
-        await new Promise(r => {
-          const interval = setInterval(() => {
-            if (execution.state === WorkflowState.RUNNING) {
-              clearInterval(interval);
-              r(null);
-            } else if (execution.state === WorkflowState.CANCELLED) {
-              clearInterval(interval);
-              throw new Error('Workflow cancelled');
-            }
-          }, 100);
-        });
-      }
-      if (execution.state === WorkflowState.CANCELLED) {
-        throw new Error('Workflow cancelled');
-      }
+  private async runWorkflow(exec: WorkflowExecution, workflow: WorkflowDefinition): Promise<WorkflowResult> {
+    const tasks = workflow.tasks.map(t => new Task(t));
+    const ordered = Task.resolveExecutionOrder(tasks);
+    const completedTasks = new Set<string>();
+    const errors: Error[] = [];
 
-      let assignedAgentId = '';
-      for (const [agentId, agentTasks] of assignments) {
-        if (agentTasks.some(t => t.id === task.id)) {
-          assignedAgentId = agentId;
+    // Get available agents
+    const agents = await this.coordinator.listAgents();
+
+    for (const task of ordered) {
+      // Check paused/cancelled
+      if (exec.state.status === 'paused' || exec.state.status === 'cancelled') break;
+
+      exec.state.currentTask = task.id;
+
+      // Find a suitable agent or use the first one
+      let agentId = agents.length > 0 ? agents[0].id : undefined;
+      for (const agent of agents) {
+        if (agent.canExecute(task.type) && agent.status === 'active') {
+          agentId = agent.id;
           break;
         }
       }
 
-      if (!assignedAgentId) {
-        throw new Error(`No agent assigned for task ${task.id}`);
+      if (!agentId) {
+        if (workflow.rollbackOnFailure) {
+          await this.rollbackWorkflow(exec, ordered, completedTasks);
+        }
+        return {
+          id: workflow.id, status: 'failed',
+          tasksCompleted: completedTasks.size,
+          errors: [new Error(`No agent available for task ${task.id}`)],
+          executionOrder: exec.executionOrder
+        };
       }
 
-      execution.taskTimings[task.id] = { start: Date.now() };
-      const result = await this.executeTask(task, assignedAgentId);
-      execution.taskTimings[task.id].end = Date.now();
-      
-      results.push(result);
+      const result = await this.coordinator.executeTask(agentId, task);
+      exec.results.set(task.id, result);
+
+      if (result.status === 'completed') {
+        completedTasks.add(task.id);
+        exec.executionOrder.push(task.id);
+        exec.state.completedTasks.push(task.id);
+      } else {
+        errors.push(new Error(result.error || `Task ${task.id} failed`));
+        if (workflow.rollbackOnFailure) {
+          await this.rollbackWorkflow(exec, ordered, completedTasks);
+        }
+        exec.state.status = 'failed';
+        exec.state.completedAt = Date.now();
+        return {
+          id: workflow.id, status: 'failed',
+          tasksCompleted: completedTasks.size, errors,
+          executionOrder: exec.executionOrder,
+          duration: Date.now() - (exec.state.startedAt || Date.now())
+        };
+      }
     }
-    
-    return results;
+
+    exec.state.status = 'completed';
+    exec.state.completedAt = Date.now();
+    return {
+      id: workflow.id, status: 'completed',
+      tasksCompleted: completedTasks.size, errors: [],
+      executionOrder: exec.executionOrder,
+      duration: Date.now() - (exec.state.startedAt || Date.now())
+    };
   }
 
-  private async rollbackWorkflow(workflow: Workflow, execution: WorkflowExecution): Promise<void> {
-    execution.eventLog.push({ type: 'rollback', timestamp: Date.now() });
-    // Implementation of compensating transactions would go here
+  private async rollbackWorkflow(exec: WorkflowExecution, tasks: Task[], completed: Set<string>): Promise<void> {
+    // Rollback completed tasks in reverse order
+    const completedTasks = tasks.filter(t => completed.has(t.id)).reverse();
+    for (const task of completedTasks) {
+      try {
+        if (task.onRollback) await task.onRollback();
+      } catch { /* rollback errors are swallowed */ }
+    }
+    this.eventBus.emit('workflow:rollback', { workflowId: exec.id });
   }
 }

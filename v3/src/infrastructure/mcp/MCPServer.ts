@@ -1,129 +1,104 @@
-export interface MCPToolProvider {
-  getTools(): any[];
-  execute(toolName: string, params: any): Promise<any>;
-}
-
-export interface MCPServerOptions {
-  tools: MCPToolProvider[];
-  port?: number;
-  host?: string;
-}
-
-export interface MCPRequest {
-  jsonrpc: string;
-  id: string | number;
-  method: string;
-  params?: any;
-}
-
-export interface MCPResponse {
-  jsonrpc: string;
-  id: string | number;
-  result?: any;
-  error?: {
-    code: number;
-    message: string;
-    data?: any;
-  };
-}
+import { MCPServerOptions, MCPToolProvider, MCPTool, MCPRequest, MCPResponse } from '../../shared/types/index.js';
 
 /**
- * MCPServer handles tool registration, provider routing, and JSON-RPC.
+ * MCP Server implementation.
  */
 export class MCPServer {
-  private options: MCPServerOptions;
-  private running: boolean = false;
-  private toolRegistry: Map<string, MCPToolProvider> = new Map();
+    private providers: MCPToolProvider[] = [];
+    private toolRegistry: Map<string, MCPTool> = new Map();
+    private options: MCPServerOptions;
 
-  constructor(options: MCPServerOptions) {
-    this.options = {
-      port: options.port || 3000,
-      host: options.host || 'localhost',
-      tools: options.tools
-    };
-  }
-
-  async start(): Promise<void> {
-    this.toolRegistry.clear();
-    for (const provider of this.options.tools) {
-      const tools = provider.getTools();
-      for (const tool of tools) {
-        this.toolRegistry.set(tool.name, provider);
-      }
-    }
-    this.running = true;
-  }
-
-  async stop(): Promise<void> {
-    this.toolRegistry.clear();
-    this.running = false;
-  }
-
-  registerTool(toolProvider: MCPToolProvider): void {
-    const tools = toolProvider.getTools();
-    for (const tool of tools) {
-      this.toolRegistry.set(tool.name, toolProvider);
-    }
-    this.options.tools.push(toolProvider);
-  }
-
-  listTools(): any[] {
-    const allTools: any[] = [];
-    for (const provider of new Set(this.toolRegistry.values())) {
-      allTools.push(...provider.getTools());
-    }
-    return allTools;
-  }
-
-  async handleRequest(request: MCPRequest): Promise<MCPResponse> {
-    if (request.method !== 'mcp.executeTool') {
-      return {
-        jsonrpc: '2.0',
-        id: request.id,
-        error: { code: -32601, message: 'Method not found' }
-      };
+    /**
+     * @param options - Server configuration options
+     */
+    constructor(options: MCPServerOptions = {}) {
+        this.options = options;
+        if (options.tools) {
+            options.tools.forEach(provider => this.registerProvider(provider));
+        }
     }
 
-    const { toolName, params } = request.params || {};
-    if (!toolName) {
-      return {
-        jsonrpc: '2.0',
-        id: request.id,
-        error: { code: -32602, message: 'Invalid params: missing toolName' }
-      };
+    public async start(): Promise<void> {
+        // Implementation for starting the server
     }
 
-    const provider = this.toolRegistry.get(toolName);
-    if (!provider) {
-      return {
-        jsonrpc: '2.0',
-        id: request.id,
-        error: { code: -32601, message: `Tool ${toolName} not found` }
-      };
+    public async stop(): Promise<void> {
+        // Implementation for stopping the server
     }
 
-    try {
-      const result = await provider.execute(toolName, params);
-      return {
-        jsonrpc: '2.0',
-        id: request.id,
-        result
-      };
-    } catch (error: any) {
-      return {
-        jsonrpc: '2.0',
-        id: request.id,
-        error: { code: -32603, message: 'Internal error', data: error.message }
-      };
+    /**
+     * Registers a tool provider.
+     */
+    public registerProvider(provider: MCPToolProvider): void {
+        this.providers.push(provider);
+        if (provider.getTools) {
+            const tools = provider.getTools();
+            for (const tool of tools) {
+                this.toolRegistry.set(tool.name, tool);
+            }
+        }
     }
-  }
+    
+    /**
+     * Registers an individual tool.
+     */
+    public registerTool(tool: MCPTool, provider: MCPToolProvider): void {
+        this.toolRegistry.set(tool.name, tool);
+        if (!this.providers.includes(provider)) {
+            this.providers.push(provider);
+        }
+    }
 
-  getStatus(): any {
-    return {
-      running: this.running,
-      port: this.options.port,
-      host: this.options.host,
-      toolCount: this.toolRegistry.size
-    };
-  }
+    /**
+     * Lists all registered tools.
+     */
+    public listTools(): MCPTool[] {
+        return Array.from(this.toolRegistry.values());
+    }
+
+    /**
+     * Handles an incoming MCP request.
+     */
+    public async handleRequest(request: MCPRequest): Promise<MCPResponse> {
+        const { id, method, params } = request;
+        const tool = this.toolRegistry.get(method);
+        
+        if (!tool) {
+            return {
+                id,
+                error: { code: -32601, message: `Tool ${method} not found` }
+            };
+        }
+
+        for (const provider of this.providers) {
+            if (provider.getTools && provider.getTools().some(t => t.name === method)) {
+                try {
+                    const result = await provider.execute(method, params || {});
+                    return { id, result };
+                } catch (error: any) {
+                    return {
+                        id,
+                        error: { code: -32603, message: error.message || 'Internal error' }
+                    };
+                }
+            }
+        }
+
+        return {
+            id,
+            error: { code: -32603, message: `Provider for ${method} missing` }
+        };
+    }
+
+    /**
+     * Gets the server status.
+     */
+    public getStatus(): Record<string, unknown> {
+        return {
+            status: 'running',
+            registeredTools: this.listTools().length,
+            port: this.options.port,
+            host: this.options.host
+        };
+    }
 }

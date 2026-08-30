@@ -1,49 +1,47 @@
-export interface RegisteredHandler {
-  pluginId: string;
-  handler: (...args: any[]) => any;
-  priority: number;
-}
+import { ExtensionPoint } from '../../shared/types/index.js';
 
 /**
- * Manages named extension points, handles their execution and sorting by priority.
+ * Registry for managing extension points.
  */
 export class ExtensionPointRegistry {
-  private extensionPoints: Map<string, RegisteredHandler[]> = new Map();
+    private handlers: Map<string, Array<ExtensionPoint>> = new Map();
 
-  register(name: string, pluginId: string, handler: (...args: any[]) => any, priority: number = 0): void {
-    const handlers = this.extensionPoints.get(name) || [];
-    handlers.push({ pluginId, handler, priority });
-    handlers.sort((a, b) => b.priority - a.priority); // sort by priority descending
-    this.extensionPoints.set(name, handlers);
-  }
-
-  unregister(name: string, pluginId: string): void {
-    const handlers = this.extensionPoints.get(name);
-    if (handlers) {
-      const updatedHandlers = handlers.filter(h => h.pluginId !== pluginId);
-      if (updatedHandlers.length > 0) {
-        this.extensionPoints.set(name, updatedHandlers);
-      } else {
-        this.extensionPoints.delete(name);
-      }
+    /**
+     * Registers a new extension point handler.
+     * @param extensionPoint - The extension point to register.
+     */
+    public register(extensionPoint: ExtensionPoint): void {
+        const list = this.handlers.get(extensionPoint.name) || [];
+        list.push(extensionPoint);
+        // Sort by priority descending
+        list.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        this.handlers.set(extensionPoint.name, list);
     }
-  }
 
-  async invoke(name: string, context: any): Promise<any[]> {
-    const handlers = this.extensionPoints.get(name) || [];
-    const results = [];
-    for (const handlerObj of handlers) {
-      try {
-        const result = await handlerObj.handler(context);
-        results.push(result);
-      } catch (error) {
-        console.error(`Error invoking extension point ${name} for plugin ${handlerObj.pluginId}`, error);
-      }
+    /**
+     * Gets all handlers for a given extension point name.
+     * @param name - The name of the extension point.
+     */
+    public getHandlers(name: string): ExtensionPoint[] {
+        return this.handlers.get(name) || [];
     }
-    return results;
-  }
-
-  list(): string[] {
-    return Array.from(this.extensionPoints.keys());
-  }
+    
+    /**
+     * Clears all registered extension points.
+     */
+    public clear(): void {
+        this.handlers.clear();
+    }
+    
+    /**
+     * Removes a specific handler from an extension point.
+     * @param name - The name of the extension point.
+     * @param handler - The handler function to remove.
+     */
+    public removeHandler(name: string, handler: (context: unknown) => Promise<unknown>): void {
+        const list = this.handlers.get(name);
+        if (list) {
+            this.handlers.set(name, list.filter(ep => ep.handler !== handler));
+        }
+    }
 }

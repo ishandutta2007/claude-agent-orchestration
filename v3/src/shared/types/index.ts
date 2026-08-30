@@ -1,342 +1,427 @@
+/**
+ * V3 Shared Types
+ *
+ * Core type definitions used across all V3 modules
+ */
+
 import { EventEmitter } from 'events';
+
+// ============================================================================
+// Agent Types
+// ============================================================================
 
 export type AgentStatus = 'active' | 'idle' | 'busy' | 'terminated' | 'error';
 export type AgentRole = 'leader' | 'worker' | 'peer';
 export type AgentType = 'coder' | 'tester' | 'reviewer' | 'coordinator' | 'designer' | 'deployer' | string;
 
 export interface AgentCapability {
-    name: string;
-    level?: number;
+  name: string;
+  level?: 'basic' | 'intermediate' | 'advanced';
 }
 
 export interface AgentConfig {
-    id: string;
-    type: AgentType;
-    capabilities?: AgentCapability[];
-    role?: AgentRole;
-    parent?: string;
-    metadata?: Record<string, any>;
+  id: string;
+  type: AgentType;
+  capabilities?: string[];
+  role?: AgentRole;
+  parent?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Agent {
-    id: string;
-    type: AgentType;
-    status: AgentStatus;
-    capabilities: AgentCapability[];
-    role: AgentRole;
-    parent?: string;
-    metadata: Record<string, any>;
-    createdAt: Date;
-    lastActive: Date;
-    executeTask?: (task: Task) => Promise<TaskResult>;
+  id: string;
+  type: AgentType;
+  status: AgentStatus;
+  capabilities: string[];
+  role?: AgentRole;
+  parent?: string;
+  metadata?: Record<string, unknown>;
+  createdAt?: number;
+  lastActive?: number;
+  executeTask?(task: Task): Promise<TaskResult>;
 }
 
+// ============================================================================
+// Task Types
+// ============================================================================
+
 export type TaskPriority = 'high' | 'medium' | 'low';
-export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
-export type TaskType = string;
+export type TaskStatus = 'pending' | 'in-progress' | 'completed' | 'failed' | 'cancelled';
+export type TaskType = 'code' | 'test' | 'review' | 'design' | 'deploy' | 'workflow' | string;
 
 export interface Task {
-    id: string;
-    type: TaskType;
-    description: string;
-    priority: TaskPriority;
-    status: TaskStatus;
-    assignedTo?: string;
-    dependencies: string[];
-    metadata: Record<string, any>;
-    workflow?: string;
-    onExecute?: () => Promise<any>;
-    onRollback?: () => Promise<void>;
+  id: string;
+  type: TaskType;
+  description: string;
+  priority: TaskPriority;
+  status?: TaskStatus;
+  assignedTo?: string;
+  dependencies?: string[];
+  metadata?: Record<string, unknown>;
+  workflow?: WorkflowDefinition;
+  onExecute?: () => void | Promise<void>;
+  onRollback?: () => void | Promise<void>;
 }
 
 export interface TaskResult {
-    taskId: string;
-    status: 'success' | 'failure';
-    result?: any;
-    error?: Error;
-    duration: number;
-    agentId: string;
+  taskId: string;
+  status: 'completed' | 'failed';
+  result?: unknown;
+  error?: string;
+  duration?: number;
+  agentId?: string;
 }
 
 export interface TaskAssignment {
-    taskId: string;
-    agentId: string;
-    assignedAt: Date;
+  taskId: string;
+  agentId: string;
+  assignedAt: number;
+  priority: TaskPriority;
 }
 
-export type MemoryType = 'working' | 'episodic' | 'semantic' | 'procedural';
+// ============================================================================
+// Memory Types
+// ============================================================================
+
+export type MemoryType = 'task' | 'context' | 'event' | 'task-start' | 'task-complete' | 'workflow-state' | string;
 
 export interface Memory {
-    id: string;
-    agentId: string;
-    content: string | Record<string, any>;
-    type: MemoryType;
-    timestamp: Date;
-    embedding?: number[];
-    metadata: Record<string, any>;
+  id: string;
+  agentId: string;
+  content: string;
+  type: MemoryType;
+  timestamp: number;
+  embedding?: number[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface MemoryQuery {
-    agentId?: string;
-    type?: MemoryType;
-    timeRange?: {
-        start: Date;
-        end: Date;
-    };
-    metadata?: Record<string, any>;
-    limit?: number;
-    offset?: number;
+  agentId?: string;
+  type?: MemoryType;
+  timeRange?: { start: number; end: number };
+  metadata?: Record<string, unknown>;
+  limit?: number;
+  offset?: number;
 }
 
 export interface MemorySearchResult extends Memory {
-    similarity: number;
+  similarity?: number;
 }
 
-export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+// ============================================================================
+// Workflow Types
+// ============================================================================
 
-export interface WorkflowState {
-    status: WorkflowStatus;
-    currentTaskId?: string;
-    context: Record<string, any>;
-}
+export type WorkflowStatus = 'pending' | 'in-progress' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
 export interface WorkflowDefinition {
-    id: string;
-    name: string;
-    description?: string;
-    tasks: Task[];
-    entryPoint: string;
+  id: string;
+  name: string;
+  tasks: Task[];
+  debug?: boolean;
+  rollbackOnFailure?: boolean;
+}
+
+export interface WorkflowState {
+  id: string;
+  name: string;
+  tasks: Task[];
+  status: WorkflowStatus;
+  completedTasks: string[];
+  currentTask?: string;
+  startedAt?: number;
+  completedAt?: number;
 }
 
 export interface WorkflowResult {
-    workflowId: string;
-    status: 'success' | 'failure';
-    output?: any;
-    error?: Error;
-    metrics: WorkflowMetrics;
+  id: string;
+  status: 'completed' | 'failed' | 'cancelled';
+  tasksCompleted: number;
+  tasksFailed?: number;
+  errors: Error[];
+  executionOrder?: string[];
+  duration?: number;
 }
 
 export interface WorkflowMetrics {
-    duration: number;
-    tasksCompleted: number;
-    tasksFailed: number;
+  tasksTotal: number;
+  tasksCompleted: number;
+  tasksFailed?: number;
+  totalDuration: number;
+  averageTaskDuration: number;
+  successRate: number;
 }
 
 export interface WorkflowDebugInfo {
-    stateHistory: WorkflowState[];
-    events: any[];
+  executionTrace: Array<{ taskId: string; timestamp: number; action: string }>;
+  taskTimings: Record<string, { start: number; end: number; duration: number }>;
+  memorySnapshots: Array<{ timestamp: number; snapshot: Record<string, unknown> }>;
+  eventLog: Array<{ timestamp: number; event: string; data: unknown }>;
 }
+
+// ============================================================================
+// Swarm/Coordination Types
+// ============================================================================
 
 export type SwarmTopology = 'hierarchical' | 'mesh' | 'simple' | 'adaptive';
 
 export interface SwarmConfig {
-    topology: SwarmTopology;
-    memoryBackend?: MemoryBackend;
-    eventBus?: EventEmitter;
-    pluginManager?: PluginManagerInterface;
-    maxAgents?: number;
+  topology: SwarmTopology;
+  memoryBackend?: MemoryBackend;
+  eventBus?: EventEmitter;
+  pluginManager?: PluginManagerInterface;
+  maxAgents?: number;
 }
 
 export interface SwarmState {
-    activeAgents: number;
-    pendingTasks: number;
-    topology: SwarmTopology;
+  agents: Agent[];
+  topology: SwarmTopology;
+  leader?: string;
+  activeConnections?: number;
 }
 
 export interface SwarmHierarchy {
-    leaderId: string;
-    workerIds: string[];
+  leader: string;
+  workers: Array<{ id: string; parent: string }>;
 }
 
 export interface MeshConnection {
-    sourceId: string;
-    targetId: string;
-    strength: number;
+  from: string;
+  to: string;
+  type: 'peer' | 'leader' | 'worker';
+  weight?: number;
 }
 
 export interface AgentMessage {
-    id: string;
-    sourceId: string;
-    targetId: string;
-    type: string;
-    payload: any;
-    timestamp: Date;
+  from: string;
+  to: string;
+  type: string;
+  payload: Record<string, unknown>;
+  timestamp?: number;
 }
 
 export interface AgentMetrics {
-    tasksCompleted: number;
-    totalActiveTime: number;
-    errorRate: number;
+  agentId: string;
+  tasksCompleted: number;
+  tasksFailed?: number;
+  averageExecutionTime: number;
+  successRate: number;
+  health: 'healthy' | 'degraded' | 'unhealthy';
 }
 
 export interface ConsensusDecision {
-    id: string;
-    topic: string;
-    options: string[];
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
 }
 
 export interface ConsensusResult {
-    decisionId: string;
-    winningOption: string;
-    votes: Record<string, number>;
+  decision: unknown;
+  votes: Array<{ agentId: string; vote: unknown }>;
+  consensusReached: boolean;
+}
+
+// ============================================================================
+// Plugin Types
+// ============================================================================
+
+export interface Plugin {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  homepage?: string;
+  priority?: number;
+  dependencies?: string[];
+  configSchema?: Record<string, unknown>;
+  minCoreVersion?: string;
+  maxCoreVersion?: string;
+  initialize(config?: Record<string, unknown>): Promise<void>;
+  shutdown(): Promise<void>;
+  getExtensionPoints(): ExtensionPoint[];
 }
 
 export interface ExtensionPoint {
-    name: string;
-    handler: (...args: any[]) => any;
-    priority: number;
-}
-
-export interface Plugin {
-    id: string;
-    name: string;
-    version: string;
-    description: string;
-    author: string;
-    homepage?: string;
-    priority: number;
-    dependencies?: Record<string, string>;
-    configSchema?: Record<string, any>;
-    minCoreVersion?: string;
-    maxCoreVersion?: string;
-    initialize: (config?: any) => Promise<void>;
-    shutdown: () => Promise<void>;
-    getExtensionPoints: () => ExtensionPoint[];
+  name: string;
+  handler: (context: unknown) => Promise<unknown>;
+  priority?: number;
 }
 
 export interface PluginMetadata {
-    id: string;
-    version: string;
-    isEnabled: boolean;
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  homepage?: string;
 }
 
 export interface PluginManagerInterface {
-    registerPlugin(plugin: Plugin): void;
-    unregisterPlugin(pluginId: string): void;
-    getPlugin(pluginId: string): Plugin | undefined;
-    getAllPlugins(): Plugin[];
+  loadPlugin(plugin: Plugin, config?: Record<string, unknown>): Promise<void>;
+  unloadPlugin(pluginId: string): Promise<void>;
+  reloadPlugin(pluginId: string, plugin: Plugin): Promise<void>;
+  listPlugins(): Plugin[];
+  getPluginMetadata(pluginId: string): PluginMetadata | undefined;
+  invokeExtensionPoint(name: string, context: unknown): Promise<unknown[]>;
+  getCoreVersion(): string;
+  initialize(): Promise<void>;
+  shutdown(): Promise<void>;
 }
 
+// ============================================================================
+// MCP Types
+// ============================================================================
+
 export interface MCPServerOptions {
-    host: string;
-    port: number;
+  tools?: MCPToolProvider[];
+  port?: number;
+  host?: string;
 }
 
 export interface MCPTool {
-    name: string;
-    description: string;
-    execute: (args: any) => Promise<any>;
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
 }
 
 export interface MCPToolProvider {
-    getTools(): MCPTool[];
+  execute(toolName: string, params: Record<string, unknown>): Promise<MCPToolResult>;
+  getTools?(): MCPTool[];
 }
 
 export interface MCPToolResult {
-    toolName: string;
-    result: any;
+  success: boolean;
+  agent?: Agent;
+  agents?: Agent[];
+  metrics?: AgentMetrics;
+  memories?: Memory[];
+  results?: MemorySearchResult[];
+  config?: Record<string, unknown>;
+  valid?: boolean;
+  errors?: string[];
+  error?: string;
 }
 
 export interface MCPRequest {
-    type: string;
-    payload: any;
+  id: string;
+  method: string;
+  params: Record<string, unknown>;
 }
 
 export interface MCPResponse {
-    type: string;
-    payload: any;
+  id: string;
+  result?: unknown;
+  error?: { code: number; message: string };
 }
 
+// ============================================================================
+// Backend Interfaces
+// ============================================================================
+
 export interface MemoryBackend {
-    initialize(): Promise<void>;
-    close(): Promise<void>;
-    store(memory: Memory): Promise<void>;
-    retrieve(id: string): Promise<Memory | undefined>;
-    update(id: string, updates: Partial<Memory>): Promise<void>;
-    delete(id: string): Promise<void>;
-    query(query: MemoryQuery): Promise<Memory[]>;
-    vectorSearch(embedding: number[], limit?: number): Promise<MemorySearchResult[]>;
-    clearAgent(agentId: string): Promise<void>;
+  initialize(): Promise<void>;
+  close(): Promise<void>;
+  store(memory: Memory): Promise<Memory>;
+  retrieve(id: string): Promise<Memory | undefined>;
+  update(memory: Memory): Promise<void>;
+  delete(id: string): Promise<void>;
+  query(query: MemoryQuery): Promise<Memory[]>;
+  vectorSearch(embedding: number[], k?: number): Promise<MemorySearchResult[]>;
+  clearAgent?(agentId: string): Promise<void>;
 }
 
 export interface SQLiteOptions {
-    filename: string;
+  dbPath: string;
+  timeout?: number;
 }
 
 export interface AgentDBOptions {
-    connectionString: string;
+  dbPath: string;
+  dimensions?: number;
+  hnswM?: number;
+  efConstruction?: number;
 }
 
+// ============================================================================
+// Event Types
+// ============================================================================
+
 export interface AgentEvent {
-    type: string;
-    agentId: string;
-    data: any;
-    timestamp: Date;
+  type: 'agent:spawned' | 'agent:terminated' | 'agent:message';
+  agentId: string;
+  timestamp: number;
+  payload: Record<string, unknown>;
 }
 
 export interface TaskEvent {
-    type: string;
-    taskId: string;
-    data: any;
-    timestamp: Date;
+  type: 'task:started' | 'task:completed' | 'task:failed';
+  taskId: string;
+  agentId?: string;
+  timestamp: number;
+  payload: Record<string, unknown>;
 }
 
 export interface WorkflowEvent {
-    type: string;
-    workflowId: string;
-    data: any;
-    timestamp: Date;
+  type: 'workflow:started' | 'workflow:taskComplete' | 'workflow:completed' | 'workflow:failed';
+  workflowId: string;
+  timestamp: number;
+  payload: Record<string, unknown>;
 }
 
 export interface PluginEvent {
-    type: string;
-    pluginId: string;
-    data: any;
-    timestamp: Date;
+  type: 'plugin:loaded' | 'plugin:unloaded' | 'plugin:error';
+  pluginId: string;
+  timestamp: number;
+  payload: Record<string, unknown>;
 }
 
+// ============================================================================
+// Error Types
+// ============================================================================
+
 export class V3Error extends Error {
-    constructor(
-        message: string,
-        public code: string,
-        public details?: any
-    ) {
-        super(message);
-        this.name = 'V3Error';
-    }
+  constructor(
+    message: string,
+    public code: string,
+    public details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = 'V3Error';
+  }
 }
 
 export class ValidationError extends V3Error {
-    constructor(message: string, details?: any) {
-        super(message, 'VALIDATION_ERROR', details);
-        this.name = 'ValidationError';
-    }
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'VALIDATION_ERROR', details);
+    this.name = 'ValidationError';
+  }
 }
 
 export class ExecutionError extends V3Error {
-    constructor(message: string, details?: any) {
-        super(message, 'EXECUTION_ERROR', details);
-        this.name = 'ExecutionError';
-    }
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'EXECUTION_ERROR', details);
+    this.name = 'ExecutionError';
+  }
 }
 
 export class CoordinationError extends V3Error {
-    constructor(message: string, details?: any) {
-        super(message, 'COORDINATION_ERROR', details);
-        this.name = 'CoordinationError';
-    }
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'COORDINATION_ERROR', details);
+    this.name = 'CoordinationError';
+  }
 }
 
 export class PluginError extends V3Error {
-    constructor(message: string, details?: any) {
-        super(message, 'PLUGIN_ERROR', details);
-        this.name = 'PluginError';
-    }
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'PLUGIN_ERROR', details);
+    this.name = 'PluginError';
+  }
 }
 
 export class MemoryError extends V3Error {
-    constructor(message: string, details?: any) {
-        super(message, 'MEMORY_ERROR', details);
-        this.name = 'MemoryError';
-    }
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'MEMORY_ERROR', details);
+    this.name = 'MemoryError';
+  }
 }

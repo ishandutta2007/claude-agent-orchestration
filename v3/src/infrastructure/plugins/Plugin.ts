@@ -1,63 +1,67 @@
-export interface ExtensionPoint {
-  name: string;
-  handler: (...args: any[]) => any;
-  priority?: number;
-}
+import { Plugin, ExtensionPoint } from '../../shared/types/index.js';
 
-export interface Plugin {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  author: string;
-  homepage?: string;
-  priority?: number;
-  dependencies?: Record<string, string>;
-  configSchema?: any;
-  minCoreVersion?: string;
-  maxCoreVersion?: string;
-}
+export { Plugin, ExtensionPoint };
 
 /**
- * BasePlugin abstract class providing standard plugin functionality.
+ * Base abstract class implementing the Plugin interface.
  */
 export abstract class BasePlugin implements Plugin {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  author: string;
-  homepage?: string;
-  priority?: number;
-  dependencies?: Record<string, string>;
-  configSchema?: any;
-  minCoreVersion?: string;
-  maxCoreVersion?: string;
-  
-  protected extensionPoints: ExtensionPoint[] = [];
+    public id: string;
+    public name: string;
+    public version: string;
+    public description?: string;
+    public author?: string;
+    public homepage?: string;
+    public priority?: number;
+    public dependencies?: string[];
+    public configSchema?: unknown;
+    public minCoreVersion?: string;
+    public maxCoreVersion?: string;
+    protected extensionPoints: ExtensionPoint[] = [];
 
-  constructor(config: Partial<Plugin> = {}) {
-    this.id = config.id || '';
-    this.name = config.name || '';
-    this.version = config.version || '1.0.0';
-    this.description = config.description || '';
-    this.author = config.author || '';
-    this.homepage = config.homepage;
-    this.priority = config.priority;
-    this.dependencies = config.dependencies;
-    this.configSchema = config.configSchema;
-    this.minCoreVersion = config.minCoreVersion;
-    this.maxCoreVersion = config.maxCoreVersion;
-  }
+    /**
+     * Initializes the BasePlugin.
+     * @param config - Partial configuration for the plugin.
+     */
+    constructor(config: Partial<Plugin> = {}) {
+        this.id = config.id || '';
+        this.name = config.name || '';
+        this.version = config.version || '';
+        this.description = config.description;
+        this.author = config.author;
+        this.homepage = config.homepage;
+        this.priority = config.priority;
+        this.dependencies = config.dependencies;
+        this.configSchema = config.configSchema;
+        this.minCoreVersion = config.minCoreVersion;
+        this.maxCoreVersion = config.maxCoreVersion;
+    }
 
-  abstract initialize(config?: any): Promise<void>;
-  abstract shutdown(): Promise<void>;
+    /**
+     * Initialize the plugin with optional config.
+     * @param config - Optional configuration.
+     */
+    abstract initialize(config?: unknown): Promise<void>;
 
-  getExtensionPoints(): ExtensionPoint[] {
-    return this.extensionPoints;
-  }
+    /**
+     * Shut down the plugin.
+     */
+    abstract shutdown(): Promise<void>;
 
-  protected registerExtensionPoint(name: string, handler: (...args: any[]) => any, priority: number = 0): void {
-    this.extensionPoints.push({ name, handler, priority });
-  }
+    /**
+     * Get the extension points exposed by this plugin.
+     */
+    public getExtensionPoints(): ExtensionPoint[] {
+        return this.extensionPoints;
+    }
+
+    /**
+     * Register an extension point for this plugin.
+     * @param name - The name of the extension point.
+     * @param handler - The handler function.
+     * @param priority - Optional priority.
+     */
+    protected registerExtensionPoint(name: string, handler: (context: unknown) => Promise<unknown>, priority?: number): void {
+        this.extensionPoints.push({ name, handler, priority });
+    }
 }

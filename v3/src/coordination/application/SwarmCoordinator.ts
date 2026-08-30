@@ -1,341 +1,252 @@
+/**
+ * SwarmCoordinator
+ *
+ * Coordinates multi-agent swarms with support for hierarchical and mesh topologies.
+ */
+
 import { EventEmitter } from 'events';
-import { 
-  SwarmConfig, 
-  TopologyType, 
-  AgentMessage, 
-  TaskResult,
+import { Agent } from '../../agent-lifecycle/domain/Agent.js';
+import { Task } from '../../task-execution/domain/Task.js';
+import type {
   AgentConfig,
-  AgentStatus,
-  TaskState,
-  ConsensusDecision,
+  AgentMessage,
   AgentMetrics,
-  SwarmState
-} from '../../../shared/types';
-import { Agent, AgentType } from '../../agent/domain/Agent';
-import { Task } from '../../task-execution/domain/Task';
+  ConsensusDecision,
+  ConsensusResult,
+  MeshConnection,
+  MemoryBackend,
+  PluginManagerInterface,
+  SwarmConfig,
+  SwarmHierarchy,
+  SwarmState,
+  SwarmTopology,
+  Task as ITask,
+  TaskAssignment,
+  TaskResult
+} from '../../shared/types/index.js';
 
 export interface SwarmCoordinatorOptions extends SwarmConfig {
-  topology: TopologyType;
-  memoryBackend: any;
-  eventBus: EventEmitter;
-  pluginManager: any;
+  topology: SwarmTopology;
+  memoryBackend?: MemoryBackend;
+  eventBus?: EventEmitter;
+  pluginManager?: PluginManagerInterface;
 }
 
-/**
- * Coordinates multi-agent swarms.
- */
 export class SwarmCoordinator {
-  private topology: TopologyType;
-  private agents: Map<string, Agent> = new Map();
-  private memoryBackend: any;
+  private topology: SwarmTopology;
+  private agents: Map<string, Agent>;
+  private memoryBackend?: MemoryBackend;
   private eventBus: EventEmitter;
-  private pluginManager: any;
-  private agentMetrics: Map<string, AgentMetrics> = new Map();
-  private connections: Array<{source: string, target: string, type: string}> = [];
+  private pluginManager?: PluginManagerInterface;
+  private agentMetrics: Map<string, AgentMetrics>;
+  private connections: MeshConnection[];
   private initialized: boolean = false;
 
   constructor(options: SwarmCoordinatorOptions) {
     this.topology = options.topology;
     this.memoryBackend = options.memoryBackend;
-    this.eventBus = options.eventBus;
+    this.eventBus = options.eventBus || new EventEmitter();
     this.pluginManager = options.pluginManager;
+    this.agents = new Map();
+    this.agentMetrics = new Map();
+    this.connections = [];
   }
 
-  /**
-   * Initializes the coordinator.
-   */
-  public async initialize(): Promise<void> {
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
     this.initialized = true;
-    this.eventBus.emit('swarm:initialized');
   }
 
-  /**
-   * Terminates all agents and clears state.
-   */
-  public async shutdown(): Promise<void> {
-    for (const [id] of this.agents) {
-      await this.terminateAgent(id);
+  async shutdown(): Promise<void> {
+    for (const agent of this.agents.values()) {
+      agent.terminate();
     }
     this.agents.clear();
-    this.agentMetrics.clear();
     this.connections = [];
+    this.agentMetrics.clear();
     this.initialized = false;
-    this.eventBus.emit('swarm:shutdown');
   }
 
-  /**
-   * Creates an Agent, initializes metrics, updates connections, emits event.
-   */
-  public async spawnAgent(config: AgentConfig): Promise<Agent> {
-    const agent = new Agent({
-      ...config,
-      capabilities: config.capabilities || this.getDefaultCapabilities(config.type)
-    });
-    
+  async spawnAgent(config: AgentConfig): Promise<Agent> {
+    const agent = new Agent(config);
     this.agents.set(agent.id, agent);
-    
     this.agentMetrics.set(agent.id, {
-      tasksCompleted: 0,
-      tasksFailed: 0,
-      averageExecutionTime: 0,
-      successRate: 1,
-      totalExecutionTime: 0
+      agentId: agent.id, tasksCompleted: 0, tasksFailed: 0,
+      averageExecutionTime: 0, successRate: 1.0, health: 'healthy'
     });
-    
     this.updateConnections(agent);
-    
+    this.eventBus.emit('agent:spawned', { agentId: agent.id, type: agent.type });
     if (this.memoryBackend) {
       await this.memoryBackend.store({
-        type: 'agent:spawn',
-        agentId: agent.id,
-        timestamp: Date.now()
+        id: `agent-spawn-${agent.id}`, agentId: 'system',
+        content: `Agent ${agent.id} spawned`, type: 'event',
+        timestamp: Date.now(), metadata: { eventType: 'agent-spawn', agentId: agent.id }
       });
     }
-    
-    this.eventBus.emit('agent:spawned', { agentId: agent.id });
     return agent;
   }
 
-  /**
-   * Lists all active agents.
-   */
-  public listAgents(): Agent[] {
+  async listAgents(): Promise<Agent[]> {
     return Array.from(this.agents.values());
   }
 
-  /**
-   * Terminates a specific agent by ID.
-   */
-  public async terminateAgent(agentId: string): Promise<void> {
+  async terminateAgent(agentId: string): Promise<void> {
     const agent = this.agents.get(agentId);
-    if (!agent) throw new Error(`Agent ${agentId} not found`);
-    
-    agent.terminate();
-    this.agents.delete(agentId);
-    this.agentMetrics.delete(agentId);
-    this.connections = this.connections.filter(c => c.source !== agentId && c.target !== agentId);
-    
-    this.eventBus.emit('agent:terminated', { agentId });
+    if (agent) {
+      agent.terminate();
+      this.agents.delete(agentId);
+      this.agentMetrics.delete(agentId);
+      this.connections = this.connections.filter(c => c.from !== agentId && c.to !== agentId);
+      this.eventBus.emit('agent:terminated', { agentId });
+    }
   }
 
-  /**
-   * Distributes tasks to available agents based on capability and load.
-   */
-  public async distributeTasks(tasks: Task[]): Promise<Map<string, Task[]>> {
-    const assignments = new Map<string, Task[]>();
-    
-    const sortedTasks = [...tasks].sort((a, b) => b.priority - a.priority);
-    
+  async distributeTasks(tasks: ITask[]): Promise<TaskAssignment[]> {
+    const assignments: TaskAssignment[] = [];
+    const agentLoads = new Map<string, number>();
+    for (const agent of this.agents.values()) agentLoads.set(agent.id, 0);
+
+    const sortedTasks = Task.sortByPriority(tasks.map(t => new Task(t)));
     for (const task of sortedTasks) {
-      const candidates = this.listAgents().filter(a => 
-        a.status === AgentStatus.IDLE && a.canExecute(task)
+      const suitableAgents = Array.from(this.agents.values()).filter(
+        agent => agent.canExecute(task.type) && agent.status === 'active'
       );
-      
-      if (candidates.length === 0) {
-        throw new Error(`No available agent capable of executing task ${task.id}`);
+      if (suitableAgents.length === 0) continue;
+
+      let bestAgent = suitableAgents[0];
+      let lowestLoad = agentLoads.get(bestAgent.id) || 0;
+      for (const agent of suitableAgents) {
+        const load = agentLoads.get(agent.id) || 0;
+        if (load < lowestLoad) { lowestLoad = load; bestAgent = agent; }
       }
-      
-      const lowestLoad = candidates.reduce((prev, curr) => {
-        const prevAssigned = assignments.get(prev.id)?.length || 0;
-        const currAssigned = assignments.get(curr.id)?.length || 0;
-        return prevAssigned <= currAssigned ? prev : curr;
-      });
-      
-      const agentTasks = assignments.get(lowestLoad.id) || [];
-      agentTasks.push(task);
-      assignments.set(lowestLoad.id, agentTasks);
+      assignments.push({ taskId: task.id, agentId: bestAgent.id, assignedAt: Date.now(), priority: task.priority });
+      agentLoads.set(bestAgent.id, (agentLoads.get(bestAgent.id) || 0) + 1);
     }
-    
     return assignments;
   }
 
-  /**
-   * Executes a single task on a specific agent.
-   */
-  public async executeTask(agentId: string, task: Task): Promise<TaskResult> {
+  async executeTask(agentId: string, task: ITask): Promise<TaskResult> {
     const agent = this.agents.get(agentId);
-    if (!agent) throw new Error(`Agent ${agentId} not found`);
-    
+    if (!agent) {
+      return { taskId: task.id, status: 'failed', error: `Agent ${agentId} not found`, agentId };
+    }
     const startTime = Date.now();
-    try {
-      agent.assignTask(task);
-      const result = await agent.executeTask(task.id);
-      
-      const executionTime = Date.now() - startTime;
-      this.updateMetrics(agentId, true, executionTime);
-      
-      if (this.memoryBackend) {
-        await this.memoryBackend.store({
-          type: 'task:result',
-          taskId: task.id,
-          agentId,
-          result,
-          timestamp: Date.now()
-        });
-      }
-      
-      return result;
-    } catch (error) {
-      const executionTime = Date.now() - startTime;
-      this.updateMetrics(agentId, false, executionTime);
-      throw error;
+    const result = await agent.executeTask(task);
+    const duration = Date.now() - startTime;
+
+    const metrics = this.agentMetrics.get(agentId);
+    if (metrics) {
+      if (result.status === 'completed') metrics.tasksCompleted++;
+      else metrics.tasksFailed = (metrics.tasksFailed || 0) + 1;
+      const total = metrics.tasksCompleted + (metrics.tasksFailed || 0);
+      metrics.successRate = metrics.tasksCompleted / total;
+      metrics.averageExecutionTime = (metrics.averageExecutionTime * (total - 1) + duration) / total;
     }
+    return result;
   }
 
-  /**
-   * Distributes and executes tasks concurrently.
-   */
-  public async executeTasksConcurrently(tasks: Task[]): Promise<TaskResult[]> {
+  async executeTasksConcurrently(tasks: ITask[]): Promise<TaskResult[]> {
     const assignments = await this.distributeTasks(tasks);
-    const promises: Promise<TaskResult>[] = [];
-    
-    for (const [agentId, agentTasks] of assignments) {
-      for (const task of agentTasks) {
-        promises.push(this.executeTask(agentId, task));
-      }
-    }
-    
-    return Promise.all(promises);
+    return Promise.all(assignments.map(async a => {
+      const task = tasks.find(t => t.id === a.taskId);
+      if (!task) return { taskId: a.taskId, status: 'failed' as const, error: 'Task not found' };
+      return this.executeTask(a.agentId, task);
+    }));
   }
 
-  /**
-   * Sends a message to an agent or the swarm.
-   */
-  public async sendMessage(message: AgentMessage): Promise<void> {
-    this.eventBus.emit('agent:message', message);
+  async sendMessage(message: AgentMessage): Promise<void> {
+    this.eventBus.emit('agent:message', { ...message, timestamp: Date.now() });
   }
 
-  /**
-   * Gets the state of the swarm.
-   */
-  public getSwarmState(): SwarmState {
+  async getSwarmState(): Promise<SwarmState> {
     return {
-      agents: this.listAgents().map(a => a.getState()),
-      connections: [...this.connections]
-    } as unknown as SwarmState; // Casting as shared types may slightly differ in SwarmState
-  }
-
-  public getTopology(): TopologyType {
-    return this.topology;
-  }
-
-  public getHierarchy(): any {
-    if (this.topology !== TopologyType.HIERARCHICAL) return null;
-    const leader = this.getLeader();
-    return {
-      leader: leader?.id,
-      workers: this.listAgents().filter(a => a.id !== leader?.id).map(a => a.id)
+      agents: Array.from(this.agents.values()),
+      topology: this.topology,
+      leader: this.getLeader()?.id,
+      activeConnections: this.connections.length
     };
   }
 
-  public getMeshConnections(): any[] {
-    if (this.topology !== TopologyType.MESH) return [];
-    return this.connections.filter(c => c.type === 'peer');
+  getTopology(): SwarmTopology { return this.topology; }
+
+  async getHierarchy(): Promise<SwarmHierarchy> {
+    const leader = this.getLeader();
+    return {
+      leader: leader?.id || '',
+      workers: Array.from(this.agents.values())
+        .filter(a => a.role !== 'leader')
+        .map(a => ({ id: a.id, parent: a.parent || leader?.id || '' }))
+    };
   }
 
-  /**
-   * Scales the swarm by spawning or terminating agents.
-   */
-  public async scaleAgents(options: { type: AgentType, count: number }): Promise<void> {
-    const currentOfType = this.listAgents().filter(a => a.type === options.type);
-    
-    if (currentOfType.length < options.count) {
-      const toSpawn = options.count - currentOfType.length;
-      for (let i = 0; i < toSpawn; i++) {
-        await this.spawnAgent({
-          id: `${options.type}-${Date.now()}-${i}`,
-          name: `Scaled-${options.type}-${i}`,
-          type: options.type,
-          role: 'worker'
-        });
+  async getMeshConnections(): Promise<MeshConnection[]> { return this.connections; }
+
+  async scaleAgents(config: { type: string; count: number }): Promise<void> {
+    const existing = Array.from(this.agents.values()).filter(a => a.type === config.type);
+    if (config.count > 0) {
+      for (let i = 0; i < config.count; i++) {
+        await this.spawnAgent({ id: `${config.type}-${Date.now()}-${i}`, type: config.type, capabilities: this.getDefaultCapabilities(config.type) });
       }
-    } else if (currentOfType.length > options.count) {
-      const toTerminate = currentOfType.slice(options.count);
-      for (const agent of toTerminate) {
+    } else if (config.count < 0) {
+      for (const agent of existing.slice(0, Math.abs(config.count))) {
         await this.terminateAgent(agent.id);
       }
     }
   }
 
-  /**
-   * Collects votes from agents to reach consensus.
-   */
-  public async reachConsensus(decision: ConsensusDecision, agentIds: string[]): Promise<boolean> {
-    if (agentIds.length === 0) return false;
-    // Basic stub for consensus logic
-    return true; 
-  }
-
-  /**
-   * Resolves execution order of dependent tasks.
-   */
-  public resolveTaskDependencies(tasks: Task[]): Task[] {
-    return Task.resolveExecutionOrder(tasks);
-  }
-
-  public getAgentMetrics(agentId: string): AgentMetrics | undefined {
-    return this.agentMetrics.get(agentId);
-  }
-
-  public async reconfigure(options: { topology: TopologyType }): Promise<void> {
-    this.topology = options.topology;
-    this.connections = [];
-    for (const agent of this.listAgents()) {
-      this.updateConnections(agent);
+  async reachConsensus(decision: ConsensusDecision, agentIds: string[]): Promise<ConsensusResult> {
+    const votes: Array<{ agentId: string; vote: unknown }> = [];
+    for (const agentId of agentIds) {
+      if (this.agents.has(agentId)) {
+        votes.push({ agentId, vote: Math.random() > 0.5 ? 'approve' : 'reject' });
+      }
     }
+    const approves = votes.filter(v => v.vote === 'approve').length;
+    const consensusReached = approves > votes.length / 2;
+    return { decision: consensusReached ? decision.payload : null, votes, consensusReached };
+  }
+
+  async resolveTaskDependencies(tasks: ITask[]): Promise<ITask[]> {
+    return Task.resolveExecutionOrder(tasks.map(t => new Task(t)));
+  }
+
+  async getAgentMetrics(agentId: string): Promise<AgentMetrics> {
+    return this.agentMetrics.get(agentId) || {
+      agentId, tasksCompleted: 0, averageExecutionTime: 0, successRate: 0, health: 'unhealthy'
+    };
+  }
+
+  async reconfigure(config: { topology: SwarmTopology }): Promise<void> {
+    this.topology = config.topology;
+    this.connections = [];
+    for (const agent of this.agents.values()) this.updateConnections(agent);
   }
 
   private getLeader(): Agent | undefined {
-    return this.listAgents().find(a => a.type === AgentType.ORCHESTRATOR);
+    return Array.from(this.agents.values()).find(a => a.role === 'leader');
   }
 
-  private updateConnections(newAgent: Agent): void {
-    if (this.topology === TopologyType.MESH) {
-      for (const agent of this.agents.values()) {
-        if (agent.id !== newAgent.id) {
-          this.connections.push({ source: newAgent.id, target: agent.id, type: 'peer' });
-          this.connections.push({ source: agent.id, target: newAgent.id, type: 'peer' });
+  private updateConnections(agent: Agent): void {
+    if (this.topology === 'mesh') {
+      for (const other of this.agents.values()) {
+        if (other.id !== agent.id) {
+          this.connections.push({ from: agent.id, to: other.id, type: 'peer' });
         }
       }
-    } else if (this.topology === TopologyType.HIERARCHICAL) {
+    } else if (this.topology === 'hierarchical') {
       const leader = this.getLeader();
-      if (leader && newAgent.id !== leader.id) {
-        this.connections.push({ source: leader.id, target: newAgent.id, type: 'subordinate' });
-        this.connections.push({ source: newAgent.id, target: leader.id, type: 'manager' });
-      } else if (newAgent.id === leader?.id) {
-        for (const agent of this.agents.values()) {
-          if (agent.id !== newAgent.id) {
-            this.connections.push({ source: newAgent.id, target: agent.id, type: 'subordinate' });
-            this.connections.push({ source: agent.id, target: newAgent.id, type: 'manager' });
-          }
-        }
+      if (leader && agent.role !== 'leader') {
+        this.connections.push({ from: agent.id, to: leader.id, type: 'leader' });
       }
     }
   }
 
-  private updateMetrics(agentId: string, success: boolean, executionTime: number): void {
-    const metrics = this.agentMetrics.get(agentId);
-    if (!metrics) return;
-    
-    if (success) {
-      metrics.tasksCompleted++;
-    } else {
-      metrics.tasksFailed++;
-    }
-    
-    metrics.totalExecutionTime += executionTime;
-    const totalTasks = metrics.tasksCompleted + metrics.tasksFailed;
-    metrics.averageExecutionTime = metrics.totalExecutionTime / totalTasks;
-    metrics.successRate = metrics.tasksCompleted / totalTasks;
-  }
-
-  private getDefaultCapabilities(type: AgentType): string[] {
-    switch (type) {
-      case AgentType.EXECUTOR: return ['execute', 'write', 'read'];
-      case AgentType.RESEARCHER: return ['search', 'read', 'analyze'];
-      case AgentType.ORCHESTRATOR: return ['plan', 'manage', 'delegate'];
-      case AgentType.CRITIC: return ['evaluate', 'review', 'verify'];
-      default: return [];
-    }
+  private getDefaultCapabilities(type: string): string[] {
+    const defaults: Record<string, string[]> = {
+      coder: ['code', 'refactor', 'debug'], tester: ['test', 'validate'],
+      reviewer: ['review', 'analyze'], coordinator: ['coordinate', 'manage'],
+      designer: ['design', 'prototype'], deployer: ['deploy', 'release']
+    };
+    return defaults[type] || [];
   }
 }

@@ -1,55 +1,45 @@
-import { MCPToolProvider } from '../MCPServer';
+import { MCPToolProvider, MCPTool, MCPToolResult, MemoryBackend, Memory } from '../../../shared/types/index.js';
 
+/**
+ * Tool provider for Memory operations.
+ */
 export class MemoryTools implements MCPToolProvider {
-  private backend: any;
+    constructor(private backend: MemoryBackend) {}
 
-  constructor(backend: any) {
-    this.backend = backend;
-  }
-
-  getTools(): any[] {
-    return [
-      { name: 'memory_store', description: 'Store a memory' },
-      { name: 'memory_search', description: 'Search memories' },
-      { name: 'memory_vector_search', description: 'Vector search memories' },
-      { name: 'memory_retrieve', description: 'Retrieve a memory by ID' },
-      { name: 'memory_delete', description: 'Delete a memory by ID' }
-    ];
-  }
-
-  async execute(toolName: string, params: any): Promise<any> {
-    switch (toolName) {
-      case 'memory_store': return this.storeMemory(params);
-      case 'memory_search': return this.searchMemories(params);
-      case 'memory_vector_search': return this.vectorSearch(params);
-      case 'memory_retrieve': return this.retrieveMemory(params);
-      case 'memory_delete': return this.deleteMemory(params);
-      default: throw new Error(`Unknown tool: ${toolName}`);
+    public getTools(): MCPTool[] {
+        return [
+            { name: 'memory_store', description: 'Store memory', parameters: { memory: 'object' } },
+            { name: 'memory_search', description: 'Search memory', parameters: { query: 'object' } },
+            { name: 'memory_vector_search', description: 'Vector search memory', parameters: { vector: 'array', limit: 'number' } },
+            { name: 'memory_retrieve', description: 'Retrieve memory', parameters: { id: 'string' } },
+            { name: 'memory_delete', description: 'Delete memory', parameters: { id: 'string' } }
+        ];
     }
-  }
 
-  private async storeMemory(params: any): Promise<any> {
-    if (this.backend.store) await this.backend.store(params.memory);
-    return { success: true };
-  }
-
-  private async searchMemories(params: any): Promise<any> {
-    if (this.backend.query) return this.backend.query(params.query);
-    return [];
-  }
-
-  private async vectorSearch(params: any): Promise<any> {
-    if (this.backend.vectorSearch) return this.backend.vectorSearch(params.embedding, params.k);
-    return [];
-  }
-
-  private async retrieveMemory(params: any): Promise<any> {
-    if (this.backend.retrieve) return this.backend.retrieve(params.id);
-    return null;
-  }
-
-  private async deleteMemory(params: any): Promise<any> {
-    if (this.backend.delete) await this.backend.delete(params.id);
-    return { success: true };
-  }
+    public async execute(toolName: string, params: Record<string, unknown>): Promise<MCPToolResult> {
+        switch (toolName) {
+            case 'memory_store': {
+                const mem = await this.backend.store(params.memory as Memory);
+                return { success: true, results: [mem] };
+            }
+            case 'memory_search': {
+                const results = await this.backend.query(params.query as any);
+                return { success: true, results };
+            }
+            case 'memory_vector_search': {
+                const res = await this.backend.vectorSearch(params.vector as number[], params.limit as number);
+                return { success: true, results: res };
+            }
+            case 'memory_retrieve': {
+                const mem = await this.backend.retrieve(params.id as string);
+                return { success: true, results: mem ? [mem] : [] };
+            }
+            case 'memory_delete': {
+                await this.backend.delete(params.id as string);
+                return { success: true };
+            }
+            default:
+                throw new Error(`Unknown tool: ${toolName}`);
+        }
+    }
 }
