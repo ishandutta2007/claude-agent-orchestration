@@ -368,13 +368,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 <div align="center">
 
-<a href="https://star-history.com/#ishandutta2007/claude-agent-orchestration&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ishandutta2007/claude-agent-orchestration&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=ishandutta2007/claude-agent-orchestration&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ishandutta2007/claude-agent-orchestration&type=Date" width="100%" />
-  </picture>
-</a>
+[![Star History Chart](https://star-history.dera.page/svg?repos=ishandutta2007/claude-agent-orchestration&type=date&legend=top-left)](https://star-history.dera.page/#ishandutta2007/claude-agent-orchestration&type=date&legend=top-left)
 
 </div>
 
