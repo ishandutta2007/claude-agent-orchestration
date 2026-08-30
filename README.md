@@ -4,12 +4,14 @@
 
 <br><br>
 
+<a href="https://github.com/ishandutta2007/Awesome-Awesome-Awesome"><img src="https://img.shields.io/badge/Awesome-%E2%9C%94-blueviolet?style=flat-square&logo=github" alt="Awesome"/></a> <a href="https://discord.gg/jc4xtF58Ve"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
 [![npm version](https://img.shields.io/badge/npm-v3.0.0--alpha-blue.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/claude-flow)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20.0.0-green.svg?style=for-the-badge&logo=node.js)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6.svg?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2024--11--05-orange.svg?style=for-the-badge&logo=anthropic)](https://modelcontextprotocol.io/)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Event--Driven-purple.svg?style=for-the-badge)](#-architecture-overview)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+<a href="https://github.com/ishandutta2007"><img alt="GitHub followers" src="https://img.shields.io/github/followers/ishandutta2007?label=Follow" /></a>
 
 <p align="center">
   <a href="#-key-features"><b>Key Features</b></a> •
@@ -359,6 +361,22 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+---
+ 
+## 📈 Star History
+
+<div align="center">
+
+<a href="https://star-history.com/#ishandutta2007/claude-agent-orchestration&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ishandutta2007/claude-agent-orchestration&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=ishandutta2007/claude-agent-orchestration&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ishandutta2007/claude-agent-orchestration&type=Date" width="100%" />
+  </picture>
+</a>
+
+</div>
 
 ---
 
